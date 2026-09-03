@@ -1,0 +1,110 @@
+---
+name: "web-front-09-component-hooks-abstraction"
+description: "web-front 公共组件与 Hooks 清单：SnackbarAlert、ConfirmDialog、PageHeader、EmptyTableRow、LoadingOverlay、CustomTablePagination、MarkdownView、useSnackbar 等。开发页面时优先复用。"
+---
+
+# 组件和 Hooks 抽象规范（web-front/）
+
+> 以下通用组件已从 web-saas 复制到 `web-front/src/components/`（2026-09-03，原为 JSX，骨架阶段统一转换为 `.tsx` 并补充类型），样式依赖 Tailwind + daisyUI + `src/index.css` 的 `@theme` 主题变量。开发页面时**必须优先复用**，禁止重复造轮子。
+
+## 公共组件清单
+
+### 1. SnackbarAlert（全局提示）
+
+位于 `src/components/SnackbarAlert/index.tsx`，配合 `useSnackbar` hook（`src/hooks/useSnackbar.ts`）使用。
+
+```jsx
+import SnackbarAlert from '../components/SnackbarAlert'
+import { useSnackbar } from '../hooks/useSnackbar'
+
+const { snackbar, showSnackbar, hideSnackbar } = useSnackbar()
+showSnackbar('保存成功', 'success')
+
+<SnackbarAlert snackbar={snackbar} onClose={hideSnackbar} />
+```
+
+### 2. ConfirmDialog（确认对话框）
+
+位于 `src/components/ConfirmDialog/index.tsx`，用于删除/操作确认。
+
+| Prop | 类型 | 说明 |
+|------|------|------|
+| `open` | `boolean` | 是否打开 |
+| `onConfirm` | `function` | 确认回调 |
+| `onClose` | `function` | 关闭回调 |
+| `title` | `string` | 标题，默认"确认操作" |
+| `content` | `string` | 内容文本（或用 children 自定义） |
+| `confirmColor` | `string` | 确认按钮颜色，默认"error" |
+| `loading` | `boolean` | 确认中 loading 态 |
+
+### 3. PageHeader（页面标题栏）
+
+位于 `src/components/PageHeader/index.tsx`。
+
+| Prop | 类型 | 说明 |
+|------|------|------|
+| `title` | `string` | 页面标题 |
+| `onRefresh` | `function` | 刷新回调 |
+| `actions` | `array` | 操作按钮数组：`{ label, icon, onClick }` |
+
+依赖 `utils/url-state` 的 `navigatePreserving`（已一并复用到 `src/utils/url-state.ts`）。
+
+### 4. EmptyTableRow（表格空状态行）
+
+```jsx
+<EmptyTableRow colSpan={8} message="暂无会话数据" />
+```
+
+### 5. LoadingOverlay（加载状态）
+
+```jsx
+<LoadingOverlay loading={loading}>
+  <table className="table">...</table>
+</LoadingOverlay>
+```
+
+### 6. CustomTablePagination（表格分页）
+
+```jsx
+<CustomTablePagination
+  page={page}
+  rowsPerPage={rowsPerPage}
+  total={total}
+  onPageChange={handleChangePage}
+  onRowsPerPageChange={handleChangeRowsPerPage}
+/>
+```
+
+### 7. TableSkeleton（表格骨架屏）
+
+```jsx
+{loading ? <TableSkeleton rows={6} cols={5} /> : <table>...</table>}
+```
+
+### 8. MarkdownView（Markdown 渲染）
+
+位于 `src/components/MarkdownView/index.tsx`，依赖 `utils/markdown`（已复用）。
+**AI 回复文本（`QaAskResp.text`）渲染必须走此组件**，禁止另行手写 react-markdown 配置。
+
+### 9. 其他已复用组件
+
+| 组件 | 用途 |
+|------|------|
+| `PageTitle` | 简单页面标题 |
+| `Breadcrumb` | 面包屑（依赖 utils/url-state） |
+| `StepperIndicator` | 步骤指示器 |
+| `AnimateInView` | 滚动入场动画（delay 递进） |
+
+## 已复用工具函数（src/utils/）
+
+| 文件 | 用途 |
+|------|------|
+| `markdown.ts` | normalizeMarkdown / stripMarkdownForPreview |
+| `url-state.ts` | navigatePreserving 等 URL 状态保持 |
+| `format.ts` | 通用格式化 |
+| `date.ts` | 日期工具 |
+
+## 新增通用组件的原则
+
+- 同一模式出现 ≥2 处即提升为通用组件，放 `src/components/`
+- 业务专属组件放 `src/features/qa/`，不下沉到 components

@@ -1,0 +1,12 @@
+{
+  "apps": [
+    {
+      "name": "jingguan-api",
+      "script": "/home/<user>/jingguan/api/.venv/bin/uvicorn",
+      "args": "app.main:app --host 127.0.0.1 --port 8000",
+      "interpreter": "none",
+      "cwd": "/home/<user>/jingguan/api",
+      "env": { "PYTHONUNBUFFERED": "1" }
+    }
+  ]
+}

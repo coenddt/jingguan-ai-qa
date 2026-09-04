@@ -38,11 +38,11 @@ export default function AddModelModal({ open, onClose }: Props) {
       title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-plus-circle mr-1.5" style={{ color: 'var(--primary)' }} />新增模型</h3>}
       footerClassName="justify-between"
       footer={<>
-        <button className="btn btn-outline btn-sm whitespace-nowrap gap-1" disabled={!canTest || testing} onClick={runTest}>
+        <button className="btn btn-light btn-sm whitespace-nowrap gap-1" disabled={!canTest || testing} onClick={runTest}>
           {testing ? <span className="loading loading-spinner loading-xs" /> : <i className="fas fa-plug" />} 测试连接
         </button>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-text whitespace-nowrap" onClick={handleClose}>取消</button>
+          <button className="btn btn-light whitespace-nowrap" onClick={handleClose}>取消</button>
           <button className="btn btn-primary whitespace-nowrap" disabled={!testOk || !baseUrl || !apiKey || !modelName} onClick={submitAdd}>添加</button>
         </div>
       </>}>

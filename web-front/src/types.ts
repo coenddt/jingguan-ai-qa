@@ -14,6 +14,10 @@ export interface Step {
   done: boolean
   /** 流式加载态：true=该步执行中 */
   running?: boolean
+  /** 步完成/失败时间戳（unix 毫秒，日志详情排查用） */
+  ts?: number
+  /** 自上一步以来的耗时（毫秒，日志详情排查用） */
+  elapsed?: number
 }
 
 export interface Chart {
@@ -34,6 +38,29 @@ export interface QaStats {
   min_of: string
 }
 
+export interface QaAskMeta {
+  elapsed_s: number
+  tokens: number
+  /** AiModel.name（展示名），日志详情排查用 */
+  model?: string
+  /** AiModel.modelName（API 模型标识） */
+  modelName?: string
+  /** AiModel.platform（deepseek / volcengine 等） */
+  platform?: string
+}
+
+/** 守卫校验后的完整查询模板（日志详情排查用） */
+export interface QaQueryTemplate {
+  model: string
+  mode: 'query' | 'aggregate'
+  condition: Record<string, unknown>
+  fields: string[]
+  sort?: Record<string, number>
+  limit: number
+  groupBy?: string[]
+  measures?: { op: string; field: string }[]
+}
+
 export interface QaAskResp {
   session_id: string
   steps: Step[]
@@ -44,7 +71,21 @@ export interface QaAskResp {
   chart: Chart | null
   text: string
   follow_ups: string[]
-  meta: { elapsed_s: number; tokens: number }
+  /** 完整校验后查询模板（新字段，历史数据缺失） */
+  query?: QaQueryTemplate
+  /** LLM 原始产出（verify 前，含重试最终版）；精确缓存命中为 null */
+  query_raw?: Record<string, unknown> | null
+  /** 查询来源：精确缓存命中 | LLM 生成 */
+  query_source?: 'exact_cache' | 'llm'
+  /** LLM 重试轮数 */
+  retries?: number
+  /** 是否被守卫截断（超 MAX_LIMIT=200） */
+  truncated?: boolean
+  /** 实际执行返回行数 */
+  row_count?: number
+  /** 问数失败时的错误详情（含步骤/耗时），成功时无此字段 */
+  error?: string
+  meta: QaAskMeta
 }
 
 export interface SessionItem {

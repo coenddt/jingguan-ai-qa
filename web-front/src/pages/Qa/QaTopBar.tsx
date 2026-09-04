@@ -5,11 +5,12 @@ interface Props {
   listOpen: boolean
   onOpenList: () => void
   sourceLabel: string
+  onNew: () => void
   onOpenSources: () => void
   onSwitchView: (v: 'chat' | 'log') => void
 }
 
-export default function QaTopBar({ title, listOpen, onOpenList, sourceLabel, onOpenSources, onSwitchView }: Props) {
+export default function QaTopBar({ title, listOpen, onOpenList, sourceLabel, onNew, onOpenSources, onSwitchView }: Props) {
   return (
     <div className="qa-right-hdr">
       <div className="qa-rh-left">
@@ -21,6 +22,9 @@ export default function QaTopBar({ title, listOpen, onOpenList, sourceLabel, onO
       </div>
       <div className="qa-rh-center">{title}</div>
       <div className="qa-rh-right">
+        <button className="rh-btn" title="开启新会话" onClick={onNew}>
+          <i className="fas fa-plus" /> <span>新会话</span>
+        </button>
         <button className="rh-btn" title="选择问数数据源" onClick={onOpenSources}>
           <i className="fas fa-paperclip" /> <span>{sourceLabel}</span>
         </button>

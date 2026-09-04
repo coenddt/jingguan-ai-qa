@@ -145,7 +145,7 @@ function GreetingModal({ open, onClose, save }: { open: boolean; onClose: () => 
       title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-comments mr-1.5" style={{ color: 'var(--primary)' }} />对话开场白</h3>}
       footerClassName="justify-between"
       footer={<>
-        <button className="btn btn-text whitespace-nowrap" onClick={onClose}><i className="fas fa-times" /> 取消</button>
+        <button className="btn btn-light whitespace-nowrap" onClick={onClose}><i className="fas fa-times" /> 取消</button>
         <button className="btn btn-primary whitespace-nowrap" disabled={!greetingText.trim()} onClick={submit}>
           <i className="fas fa-check" /> 保存
         </button>
@@ -158,7 +158,7 @@ function GreetingModal({ open, onClose, save }: { open: boolean; onClose: () => 
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <label style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>开场问题 · {questions.length}/10</label>
-          <button className="btn btn-text btn-sm whitespace-nowrap gap-1" onClick={addQuestion} disabled={!canAddQuestion}>
+          <button className="btn btn-light btn-sm whitespace-nowrap gap-1" onClick={addQuestion} disabled={!canAddQuestion}>
             <i className="fas fa-plus" /> 添加开场问题
           </button>
         </div>
@@ -202,7 +202,7 @@ function HotModal({ open, onClose, save }: { open: boolean; onClose: () => void;
     <Modal open={open} onClose={onClose} boxClassName="max-w-[480px]" showClose
       title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-fire mr-1.5" />常问设置</h3>}
       footer={<>
-        <button className="btn btn-text whitespace-nowrap" onClick={onClose}>取消</button>
+        <button className="btn btn-light whitespace-nowrap" onClick={onClose}>取消</button>
         <button className="btn btn-primary whitespace-nowrap" onClick={submit}>保存</button>
       </>}>
       <div style={{ marginBottom: 12 }}>

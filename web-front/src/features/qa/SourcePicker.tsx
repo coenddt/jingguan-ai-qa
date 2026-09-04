@@ -50,22 +50,22 @@ export default function SourcePicker({ open, selected, onChange, onClose }: Prop
         title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-paperclip mr-2" />选择数据源</h3>}
         headerClassName="mb-2"
         footer={<>
-          <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
+          <button className="btn btn-light btn-sm whitespace-nowrap gap-1" onClick={openImport}>
             <i className="fas fa-upload" /> 导入
           </button>
-          <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={downloadTemplate}>
+          <button className="btn btn-light btn-sm whitespace-nowrap gap-1" onClick={downloadTemplate}>
             <i className="fas fa-download" /> 下载模板
           </button>
-          <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
+          <button className="btn btn-light btn-sm whitespace-nowrap gap-1" onClick={openImport}>
             <i className="fas fa-history" /> 导入记录
           </button>
           <button className="btn btn-primary whitespace-nowrap" onClick={onClose}>确定</button>
         </>}
         footerClassName="justify-between">
         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-          <button className="btn btn-text btn-xs whitespace-nowrap" style={{ fontSize: 14 }}
+          <button className="btn btn-light btn-xs whitespace-nowrap" style={{ fontSize: 14 }}
             onClick={() => onChange(allKeys)}>全选</button>
-          <button className="btn btn-text btn-xs whitespace-nowrap" style={{ fontSize: 14 }}
+          <button className="btn btn-light btn-xs whitespace-nowrap" style={{ fontSize: 14 }}
             onClick={() => onChange([])}>取消全选</button>
         </div>
         <div style={{ maxHeight: 320, overflowY: 'auto' }}>

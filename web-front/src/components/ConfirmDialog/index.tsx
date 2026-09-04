@@ -35,7 +35,7 @@ export default function ConfirmDialog({
         </div>
         <div className="modal-action mt-0 px-1 pb-1 gap-2 flex">
           <button onClick={onClose} disabled={loading}
-            className="btn btn-outline flex-1 whitespace-nowrap font-bold text-gray-500">
+            className="btn btn-light flex-1 whitespace-nowrap font-bold">
             {cancelText}
           </button>
           <button

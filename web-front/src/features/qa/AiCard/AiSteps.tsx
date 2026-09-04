@@ -1,14 +1,17 @@
 /** ① 分析过程（原型 aa-summary-bar + aa-inline-steps） */
 
 import type { Step } from '../../../types'
+import { formatClock } from '../../../utils/date'
 
 interface Props {
   open: boolean
   onToggle: () => void
   steps: Step[]
+  /** 显示每步时间戳与耗时（日志详情用，聊天页不展示） */
+  showTime?: boolean
 }
 
-export default function AiSteps({ open, onToggle, steps }: Props) {
+export default function AiSteps({ open, onToggle, steps, showTime }: Props) {
   return (
     <div className="aa-wrap">
       <div className="aa-summary-bar" onClick={onToggle}>
@@ -25,6 +28,9 @@ export default function AiSteps({ open, onToggle, steps }: Props) {
               <div className="aa-step-title">{s.title}</div>
               {!!s.desc && (
                 <div className={`aa-step-desc ${s.title.includes('SQL') || s.desc.includes('SELECT') ? 'code' : ''}`}>{s.desc}</div>
+              )}
+              {showTime && !!s.ts && (
+                <div className="aa-step-time"><i className="far fa-clock" /> {formatClock(s.ts)} · {s.elapsed ?? 0}ms</div>
               )}
             </div>
           </div>

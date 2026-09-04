@@ -1,7 +1,7 @@
 /** AI 回答结构化卡片（原型 qa-ai-card 1:1）：分析过程 → 数据发现 → 数据表格 → 数据统计 → 数据可视化 → 结论 → 页脚 → 追问
  *  流式：streaming 时按块到达顺序渲染，未到达的块显示生成中占位 */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { QaAskResp } from '../../../types'
 import MarkdownView from '../../../components/MarkdownView'
 import ChartView from '../charts'
@@ -14,6 +14,8 @@ import AiStatsGrid from './AiStatsGrid'
 import AiCardFooter from './AiCardFooter'
 import AiFollowUps from './AiFollowUps'
 import AiFeedbackModal from './AiFeedbackModal'
+import TypewriterText from './TypewriterText'
+import { Module, BlkPending, BlkEmpty } from './qaBlocks'
 
 interface Props {
   resp: Partial<QaAskResp>
@@ -21,30 +23,18 @@ interface Props {
   streaming?: boolean
 }
 
-/** 原型 qa-ai-module：编号圆点标题 + 内容 */
-function Module({ num, title, children }: { num: number; title: string; children: React.ReactNode }) {
-  return (
-    <div className="qa-ai-module">
-      <div className="mod-title"><span className="mod-num">{num}</span>{title}</div>
-      {children}
-    </div>
-  )
-}
-
-/** 流式中未到达块的占位 */
-function BlkPending() {
-  return (
-    <div className="blk-pending">
-      <i className="fas fa-circle-notch fa-spin" /> 正在生成…
-    </div>
-  )
-}
-
 export default function AiCard({ resp, question, streaming }: Props) {
   const [openSteps, setOpenSteps] = useState(!!streaming)
   const [copied, setCopied] = useState(false)
   const [fbOpen, setFbOpen] = useState(false)
   const { showSnackbar } = useSnackbar()
+
+  // 结论打字机锁存：仅当流式期间 text 到达才启用逐字显示；历史消息（streaming=undefined）直接渲染
+  const textValue = resp.text ?? ''
+  const [typed, setTyped] = useState(false)
+  useEffect(() => {
+    if (streaming && textValue) setTyped(true)
+  }, [streaming, textValue])
 
   const toggleSteps = useCallback(() => setOpenSteps((v) => !v), [])
 
@@ -89,7 +79,7 @@ export default function AiCard({ resp, question, streaming }: Props) {
           {hasTable ? (
             !!resp.rows?.length ? (
               <AiDataTable columns={resp.columns ?? []} rows={resp.rows} totalCount={resp.stats?.count ?? 0} />
-            ) : <div className="blk-empty">无表格数据</div>
+            ) : <BlkEmpty text="无表格数据" />
           ) : <BlkPending />}
         </Module>
 

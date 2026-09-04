@@ -40,14 +40,14 @@ export default function PageTitle({ title, subtitle, onRefresh, onBack, actions 
         <div className="flex gap-2 items-center">
           {!!onBack && (
             <button onClick={() => (typeof onBack === 'function' ? onBack() : navigate(-1))}
-              className="btn btn-ghost btn-sm btn-square border border-gray-200 rounded-xl hover:bg-primary hover:text-white">
+              className="btn btn-ghost btn-sm btn-square rounded-xl hover:bg-primary hover:text-white">
               <ArrowLeft size={18} />
             </button>
           )}
           {actions.map((a) => (
             <button key={a.label} onClick={a.onClick}
               className={`btn whitespace-nowrap px-5 font-bold text-sm ${
-                a.variant === 'outlined' ? 'btn-outline' : 'btn-primary'}`}>
+                a.variant === 'outlined' ? 'btn-light' : 'btn-primary'}`}>
               {a.icon}
               {a.label}
             </button>

@@ -1,10 +1,10 @@
 /** 智能问数主页（原型 page-ai-qa）：会话侧栏 + 主区（对话/日志） + 输入栏 + 数据源弹窗 */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConfigStore } from '../../store/useConfigStore'
 import { useSessionStore } from '../../store/useSessionStore'
 import { useSnackbar } from '../../hooks/useSnackbar'
-import { useQaChat } from '../../hooks/useQaChat'
+import { useQaChat, LAST_SESSION_KEY } from '../../hooks/useQaChat'
 import { readJsonLS, writeJsonLS } from '../../utils/localStorage'
 import type { SessionItem } from '../../types'
 import SessionList from '../../features/qa/SessionList'
@@ -23,6 +23,7 @@ function loadSelectedSources(): string[] {
 
 export default function Qa() {
   const sessions = useSessionStore((s) => s.items)
+  const sessionsLoaded = useSessionStore((s) => s.loaded)
   const fetchSessions = useSessionStore((s) => s.fetchMethod)
   const fetchConfig = useConfigStore((s) => s.fetchMethod)
   const sttEnabled = useConfigStore((s) => s.config.stt)
@@ -44,6 +45,18 @@ export default function Qa() {
   useEffect(() => {
     writeJsonLS(SOURCES_KEY, selectedSources)
   }, [selectedSources])
+
+  // 恢复上次会话：会话列表就绪后进入最近使用的会话（用户已切会话/发问则跳过，会话已被删则清除记录）
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current || !sessionsLoaded) return
+    restoredRef.current = true
+    if (activeId || messages.length > 0) return
+    const lastId = readJsonLS<string | null>(LAST_SESSION_KEY, null)
+    if (!lastId) return
+    if (sessions.some((s) => s.id === lastId)) void loadMessages(lastId)
+    else writeJsonLS(LAST_SESSION_KEY, null)
+  }, [sessionsLoaded, sessions, activeId, messages.length, loadMessages])
 
   const activeTitle = useMemo(
     () => sessions.find((s) => s.id === activeId)?.title || 'AI 智能问数对话',
@@ -88,7 +101,7 @@ export default function Qa() {
         {/* 原型 switchQaTab：日志视图隐藏顶栏与输入栏，由日志视图自带头部 */}
         {view === 'chat' && (
           <QaTopBar title={activeTitle} listOpen={listOpen} onOpenList={openList}
-            sourceLabel={sourceLabel}
+            sourceLabel={sourceLabel} onNew={handleNew}
             onOpenSources={openSources} onSwitchView={setView} />
         )}
 

@@ -52,7 +52,7 @@ export default function FeedbackDetailModal({ detail, onClose, onSaved }: Props)
     <Modal open={!!detail} onClose={onClose} boxClassName="max-w-[720px]" showClose
       title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-pen mr-1.5" style={{ color: '#2563EB' }} />反馈处理</h3>}
       footer={<>
-        <button className="btn btn-text whitespace-nowrap" onClick={onClose}>取消</button>
+        <button className="btn btn-light whitespace-nowrap" onClick={onClose}>取消</button>
         <button className="btn btn-primary whitespace-nowrap" disabled={saving} onClick={submit}>
           <i className="fas fa-check" /> 确认
         </button>

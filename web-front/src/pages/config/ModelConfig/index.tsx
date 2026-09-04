@@ -66,7 +66,7 @@ export default function ModelConfig() {
           </div>
 
           <div className="mc-actions">
-            <button className="btn btn-outline btn-sm whitespace-nowrap gap-1" onClick={saveConfig}>
+            <button className="btn btn-light btn-sm whitespace-nowrap gap-1" onClick={saveConfig}>
               <i className="fas fa-save" /> 保存配置
             </button>
           </div>

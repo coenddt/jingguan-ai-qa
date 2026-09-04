@@ -5,6 +5,7 @@ const ROUTE_LABELS: Record<string, string> = {
   app: '应用配置',
   model: '模型配置',
   feedback: '回复校对',
+  profile: '个人信息',
 }
 
 export default function Breadcrumb() {

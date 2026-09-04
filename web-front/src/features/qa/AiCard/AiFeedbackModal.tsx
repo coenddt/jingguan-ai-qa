@@ -37,7 +37,7 @@ export default function AiFeedbackModal({ open, sessionId, question, answer, onC
       title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-frown mr-1.5" style={{ color: '#2563EB' }} />AI回复反馈</h3>}
       showClose>
       <div style={{ fontSize: 15, color: '#374151', marginBottom: 14, lineHeight: 1.6 }}>请问你是对哪里不满意呢？</div>
-      <button className="btn btn-outline w-full whitespace-nowrap" style={{ height: 44, fontSize: 15 }} onClick={submit}>
+      <button className="btn btn-light w-full whitespace-nowrap" style={{ height: 44, fontSize: 15 }} onClick={submit}>
         <i className="fas fa-exclamation-triangle mr-1" /> 数据有误，提交反馈
       </button>
     </Modal>

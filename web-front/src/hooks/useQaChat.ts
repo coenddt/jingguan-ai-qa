@@ -6,8 +6,12 @@ import type { QaStreamEvent } from '../api/modules/qa'
 import { useSessionStore } from '../store/useSessionStore'
 import { onQaAsk } from '../services/qa'
 import { getApiErrorMsg } from '../utils/error'
+import { writeJsonLS } from '../utils/localStorage'
 import { useSnackbar } from './useSnackbar'
 import type { MsgItem, QaAskResp, Step } from '../types'
+
+/** 上次会话持久化 key：切会话/开新会话/新建会话落库时同步，供刷新或返回消息页时恢复 */
+export const LAST_SESSION_KEY = 'jg_qa_last_session'
 
 export function useQaChat(selectedSources: string[]) {
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -19,6 +23,7 @@ export function useQaChat(selectedSources: string[]) {
   /** 切换会话 / 开新会话（id 为空即新会话） */
   const loadMessages = useCallback(async (id: string | null) => {
     setActiveId(id || null)
+    writeJsonLS(LAST_SESSION_KEY, id)
     if (!id) {
       setMessages([])
       return
@@ -66,7 +71,10 @@ export function useQaChat(selectedSources: string[]) {
         }
       } else if (ev.type === 'session') {
         const sid = (ev.data as { session_id: string }).session_id
-        if (!activeId && sid) setActiveId(sid)
+        if (!activeId && sid) {
+          setActiveId(sid)
+          writeJsonLS(LAST_SESSION_KEY, sid)
+        }
       } else if (ev.type === 'done') {
         patch(() => ev.data as QaAskResp)
       }

@@ -43,7 +43,7 @@ export default function FeedbackTable({ items, loading, total, page, rowsPerPage
                     <span className={`tag whitespace-nowrap ${f.status === '已处理' ? 'tag-green' : 'tag-orange'}`}>{f.status}</span>
                   </td>
                   <td style={{ position: 'sticky', right: 0, background: '#fff' }}>
-                    <button className="btn btn-text btn-xs whitespace-nowrap" onClick={() => onHandle(f)}>处理</button>
+                    <button className="btn btn-light btn-xs whitespace-nowrap" onClick={() => onHandle(f)}>处理</button>
                   </td>
                 </tr>
               )) : (

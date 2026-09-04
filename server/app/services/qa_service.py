@@ -7,6 +7,7 @@ block（findings/table/stats/chart/text/follow_ups 逐块）→ done（最终完
 
 import json
 import time
+import traceback
 
 from app.agent.prompts import scenario_params
 from app.agent.step_tracker import StepTracker
@@ -114,6 +115,10 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
     t0 = time.monotonic()
     tracker = StepTracker()
     n_sources = len(source_keys) if source_keys else sum(len(g['items']) for g in QA_SOURCES)
+    session: dict | None = None
+    tokens = 0
+    model_conf: dict | None = None
+    saved = False
     try:
         # 会话先行：前端尽早挂载消息流；失败（如无启用模型）不会遗留空会话
         session = await _ensure_session(session_id, question)
@@ -125,11 +130,13 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
 
         model_conf = await _active_model()
         q_params = scenario_params('query_gen')
-
         rows: list[dict] | None = None
         truncated = False
         used_query: dict | None = None
         tokens = 0
+        query_source = 'llm'            # 精确缓存命中后覆盖为 'exact_cache'
+        retries = 0                     # LLM 重试轮数（首轮通过为 0）
+        query_raw: dict | None = None   # LLM 最后产出的原始查询（verify 前）；缓存命中为 None
 
         yield _step_running(1)
         ex = await query_cache.exact_hit(question)
@@ -138,7 +145,8 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                 checked = verify(ex['template'])
                 rows, truncated = await query_executor.run(checked)
                 used_query = checked
-                tracker.done(1, f'命中精确问法缓存，复用模板：{json.dumps(checked, ensure_ascii=False)[:180]}')
+                query_source = 'exact_cache'
+                tracker.done(1, f'命中精确问法缓存，复用模板：{json.dumps(checked, ensure_ascii=False)}')
                 yield _step_ev(tracker, 1)
             except GuardError:
                 pass  # 缓存校验不通过一律丢弃回退 LLM，绝不跳过守卫
@@ -147,7 +155,8 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
             few = await query_cache.top_k_fuzzy(question)
             q, ret1 = await llm_client.invoke('query_gen', {'question': question, 'few_shots': few}, model_conf)
             tokens += ret1['total_tokens']
-            tracker.done(1, f'LLM 生成查询：{json.dumps(q, ensure_ascii=False)[:180]}')
+            query_raw = q
+            tracker.done(1, f'LLM 生成查询：{json.dumps(q, ensure_ascii=False)}')
             yield _step_ev(tracker, 1)
 
             yield _step_running(2)
@@ -158,17 +167,19 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                     yield _step_ev(tracker, 2)
                     rows, truncated = await query_executor.run(checked)
                     used_query = checked
+                    retries = attempt
                     break
                 except (GuardError, BusinessError, RuntimeError, TimeoutError) as e:
                     last_err = str(e)
                     if attempt == q_params['retries'] - 1:
                         raise BusinessError(f'查询生成失败：{last_err}', 422)
-                    tracker.fail(2, f'第{attempt + 1}次校验/执行未通过：{last_err[:120]}，已回传 LLM 重试')
+                    tracker.fail(2, f'第{attempt + 1}次校验/执行未通过：{last_err}，已回传 LLM 重试')
                     yield _step_ev(tracker, 2)
                     yield _step_running(2)
                     q, ret = await llm_client.invoke(
                         'query_gen', {'question': question, 'bad_query': q, 'error': last_err}, model_conf)
                     tokens += ret['total_tokens']
+                    query_raw = q  # 始终记录最后一次 LLM 产出
 
         yield _step_running(3)
         tracker.done(3, f'执行取数完成，返回 {len(rows)} 条{ "（已截断）" if truncated else "" }')
@@ -229,6 +240,9 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
         yield {'type': 'block', 'name': 'text', 'data': text}
         yield {'type': 'block', 'name': 'follow_ups', 'data': follow_ups}
 
+        # 完整校验后模板：聚合查询的 groupBy/measures 一并带上（日志完整展示 + 修复聚合缓存回放必失效）
+        template = {k: used_query[k] for k in ('model', 'mode', 'condition', 'fields', 'sort', 'limit',
+                                               'groupBy', 'measures') if k in used_query}
         resp = {
             'session_id': session['_id'],
             'steps': tracker.out(),
@@ -239,17 +253,35 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
             'chart': chart,
             'text': text,
             'follow_ups': follow_ups,
-            'meta': {'elapsed_s': round(time.monotonic() - t0, 2), 'tokens': tokens},
+            'query': template,
+            'query_raw': query_raw,
+            'query_source': query_source,
+            'retries': retries,
+            'truncated': truncated,
+            'row_count': len(rows),
+            'meta': {
+                'elapsed_s': round(time.monotonic() - t0, 2),
+                'tokens': tokens,
+                'model': model_conf['name'],
+                'modelName': model_conf.get('modelName', ''),
+                'platform': model_conf['platform'],
+            },
         }
         await _save_messages(session, question, resp, user_name)
+        saved = True
 
-        template = {k: used_query[k] for k in ('model', 'mode', 'condition', 'fields', 'sort', 'limit')
-                    if k in used_query}
         await query_cache.upsert(question, template, success=True)
         yield {'type': 'done', 'data': resp}
     except BusinessError as e:
+        if not saved:
+            await _record_failure(session, question, tracker, str(e), time.monotonic() - t0,
+                                  tokens, model_conf)
         yield {'type': 'error', 'message': str(e)}
     except Exception:
+        if not saved:
+            await _record_failure(session, question, tracker,
+                                  traceback.format_exc(limit=10), time.monotonic() - t0,
+                                  tokens, model_conf)
         yield {'type': 'error', 'message': '问数处理失败，请稍后重试'}
 
 
@@ -266,6 +298,24 @@ async def _ensure_session(session_id: str | None, title: str) -> dict:
             raise BusinessError('会话不存在', 404)
         return s
     return await store.insert('QaSession', {'title': (title or '新对话')[:QA_TITLE_MAX], 'userName': '管理员'})
+
+
+async def _record_failure(session: dict | None, question: str, tracker: StepTracker,
+                          error: str, elapsed_s: float, tokens: int,
+                          model_conf: dict | None) -> None:
+    """失败留痕：把问题与失败诊断写入会话，避免日志出现空会话无从排查"""
+    if not session:
+        return
+    sid = session['_id']
+    meta = {'elapsed_s': round(elapsed_s, 2), 'tokens': tokens}
+    if model_conf:
+        meta.update({'model': model_conf['name'], 'modelName': model_conf.get('modelName', ''),
+                     'platform': model_conf['platform']})
+    ai_meta = {'session_id': sid, 'steps': tracker.out(), 'error': error, 'meta': meta}
+    await store.insert('QaMessage', {'sessionId': sid, 'role': 'user', 'content': question})
+    await store.insert('QaMessage', {'sessionId': sid, 'role': 'ai', 'content': '', 'aiMeta': ai_meta})
+    n = await store.count('QaMessage', {'sessionId': sid})
+    await store.update('QaSession', {'_id': sid}, {'msgCount': n})
 
 
 async def _save_messages(session: dict, question: str, resp: dict, user_name: str) -> None:

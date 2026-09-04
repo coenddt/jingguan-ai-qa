@@ -9,6 +9,7 @@ import { useSnackbar } from '../../hooks/useSnackbar'
 import { copyToClipboard } from '../../services/clipboard'
 import Modal from '../../components/Modal'
 import { formatDateTime } from '../../utils/date'
+import DevLogCard from './DevLogCard'
 
 const TIME_OPTIONS = [
   { value: 7, label: '过去7天' },
@@ -61,7 +62,7 @@ export default function QaLogView({ onBack, onOpenSession }: Props) {
       <div className="qa-chat-hdr">
         <span className="qa-chat-title"><i className="fas fa-clock" style={{ color: 'var(--primary)', marginRight: 4 }} /> 日志</span>
         <div className="qa-chat-actions">
-          <button className="btn btn-text btn-sm whitespace-nowrap" onClick={onBack}>
+          <button className="btn btn-light btn-sm whitespace-nowrap" onClick={onBack}>
             <i className="fas fa-arrow-left" /> 返回
           </button>
         </div>
@@ -78,7 +79,7 @@ export default function QaLogView({ onBack, onOpenSession }: Props) {
           <i className="fas fa-search" />
           <input type="text" placeholder="搜索标题..." value={kw} onChange={(e) => setKw(e.target.value)} />
         </div>
-        <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1 text-gray-500" onClick={refresh}>
+        <button className="btn btn-light btn-sm whitespace-nowrap gap-1" onClick={refresh}>
           <i className="fas fa-sync-alt" /> 刷新
         </button>
         <span className="qa-log-count">共 <strong>{rows.length}</strong> 条</span>
@@ -162,7 +163,7 @@ export function QaDetailModal({ session, onClose }: { session: SessionItem | nul
   if (!session) return null
 
   return (
-    <Modal open onClose={onClose} boxClassName="max-w-3xl" showClose
+    <Modal open onClose={onClose} boxClassName="max-w-4xl" showClose
       title={
         <div className="flex items-center justify-between flex-1 min-w-0 gap-3">
           <div className="min-w-0">
@@ -170,13 +171,16 @@ export function QaDetailModal({ session, onClose }: { session: SessionItem | nul
             <div className="qa-dh-id" title="点击复制" onClick={copyId}>
               <span>ID: {session.id}</span> <i className="fas fa-copy" style={{ fontSize: 12 }} />
             </div>
+            <div className="qa-dh-meta">
+              创建 {formatDateTime(session.createdAt)} · 更新 {formatDateTime(session.updatedAt)} · 共 {session.msgCount ?? msgs.length} 条消息
+            </div>
           </div>
           {!!modelName && <span className="qa-dh-model">{modelName}</span>}
         </div>
       }>
-      <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+      <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
         {msgs.map((m) => m.role === 'user' ? (
-          <div key={m.id} className="flex justify-end">
+          <div key={m.id} className="flex flex-col items-end gap-0.5">
             <div className="qa-user-bubble" style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
               <span style={{ flex: 1 }}>{m.content}</span>
               <span className="qa-copy-btn" title="复制" style={{ cursor: 'pointer', color: '#9CA3AF', fontSize: 13 }}
@@ -184,12 +188,20 @@ export function QaDetailModal({ session, onClose }: { session: SessionItem | nul
                 <i className="fas fa-copy" />
               </span>
             </div>
+            <span className="qa-msg-time">{formatDateTime(m.createdAt)}</span>
           </div>
         ) : (
           <div key={m.id} className="flex gap-2.5">
             <div className="qa-ai-avatar" style={{ width: 28, height: 28, fontSize: 13 }}><i className="fas fa-robot" /></div>
-            <div className="qa-ai-card" style={{ padding: '10px 14px' }}>
-              <p className="text-sm text-gray-600 whitespace-pre-wrap">{m.content}</p>
+            <div className="flex-1 min-w-0">
+              {m.aiMeta && Object.keys(m.aiMeta).length > 0 ? (
+                <DevLogCard resp={m.aiMeta} />
+              ) : (
+                <div className="qa-ai-card" style={{ padding: '10px 14px' }}>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{m.content}</p>
+                </div>
+              )}
+              <span className="qa-msg-time">{formatDateTime(m.createdAt)}</span>
             </div>
           </div>
         ))}

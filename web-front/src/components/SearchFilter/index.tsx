@@ -69,7 +69,7 @@ export default function SearchFilter({ fields, onSearch, onReset, initialValues 
           <button className="btn btn-primary whitespace-nowrap px-5 h-10 min-h-0 rounded-2xl font-bold" onClick={handleSearch}>
             <Search size={18} /> 检索
           </button>
-          <button className="btn btn-ghost whitespace-nowrap px-4 h-10 min-h-0 rounded-2xl font-bold border border-gray-200 text-gray-500"
+          <button className="btn btn-light whitespace-nowrap px-4 h-10 min-h-0 rounded-2xl font-bold"
             onClick={handleReset}>
             <RotateCcw size={18} /> 重置
           </button>

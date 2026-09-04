@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     MONGO_URI: str = 'mongodb://127.0.0.1:27018'
     MONGO_DB: str = 'jingguan'
 
-    VOICE_APP_ID: str = ''
-    VOICE_ACCESS_TOKEN: str = ''
+    # 火山 TTS（新版控制台 API Key，仅 Key 参与鉴权；应用名仅控制台标识不入程序）
+    VOICE_API_KEY: str = ''
 
     LLM_PLATFORM: str = 'deepseek'
     LLM_BASE_URL: str = 'https://api.deepseek.com/v1'

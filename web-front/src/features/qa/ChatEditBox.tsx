@@ -28,7 +28,7 @@ export default function ChatEditBox({ content, onCancel, onSend }: Props) {
           }} />
       </div>
       <div className="qa-edit-bar">
-        <button className="btn btn-text btn-sm whitespace-nowrap" onClick={onCancel}>
+        <button className="btn btn-light btn-sm whitespace-nowrap" onClick={onCancel}>
           <i className="fas fa-times" /> 取消
         </button>
         <button className="btn btn-primary btn-sm whitespace-nowrap" disabled={!draft.trim()} onClick={send}>

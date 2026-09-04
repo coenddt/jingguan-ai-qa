@@ -10,6 +10,7 @@ import Qa from './pages/Qa'
 import AppConfig from './pages/config/AppConfig'
 import ModelConfig from './pages/config/ModelConfig'
 import Feedback from './pages/Feedback'
+import Profile from './pages/Profile'
 
 function Shell({ user }: { user: string }) {
   return (
@@ -19,6 +20,7 @@ function Shell({ user }: { user: string }) {
         <Header user={user} />
         <main className="flex-1 overflow-auto bg-[#f8fafc]">
           <Routes>
+            <Route path="/profile" element={<Profile user={user} />} />
             <Route path="/qa" element={<Qa />} />
             <Route path="/config/app" element={<AppConfig />} />
             <Route path="/config/model" element={<ModelConfig />} />

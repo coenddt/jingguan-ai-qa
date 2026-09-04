@@ -90,7 +90,7 @@ export default function SessionList({ open, activeId, onClose, onSelect, onNew }
       <Modal open={!!actions.renameFor} onClose={actions.closeRename}
         title={<h3 className="font-bold text-lg">重命名会话</h3>} headerClassName="mb-3"
         footer={<>
-          <button className="btn btn-ghost whitespace-nowrap" onClick={actions.closeRename}>取消</button>
+          <button className="btn btn-light whitespace-nowrap" onClick={actions.closeRename}>取消</button>
           <button className="btn btn-primary whitespace-nowrap" onClick={actions.submitRename}>保存</button>
         </>}>
         <input className="input input-bordered w-full" value={actions.renameText} autoFocus

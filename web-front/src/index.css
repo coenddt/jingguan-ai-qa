@@ -75,6 +75,26 @@
   background: linear-gradient(135deg, #e0bd4a 0%, #c69a38 100%);
 }
 
+/* ============================================================
+   daisyUI 扩展按钮 btn-light：通用非主题色按钮统一样式
+   去边框 + 蓝色文字 + hover 浅背景
+   ============================================================ */
+.btn.btn-light {
+  --btn-bg: transparent;
+  --btn-border: transparent;
+  --btn-inset: 0 0 0 0 oklch(0% 0 0 / 0);
+  --btn-shadow: 0 0 0 0 oklch(0% 0 0 / 0);
+  color: #2563eb;
+  background-image: none;
+}
+.btn.btn-light:hover {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+}
+.btn.btn-light:disabled {
+  color: #9ca3af;
+}
+
 .card-hover {
   transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
@@ -117,6 +137,8 @@
 .pg-sidebar .menu-item{display:flex;align-items:center;padding:0 16px;height:48px;cursor:pointer;color:#4B5563;transition:background .15s;font-size:16px;font-weight:500;gap:12px;position:relative;margin:0 8px;border-radius:6px}
 .pg-sidebar .menu-item:hover{background:#F3F4F6;color:#111827}
 .pg-sidebar .menu-item.active{background:#2563EB;color:#fff;font-weight:600}
+/* 焦点在二级菜单时：一级菜单透明背景 + 文字加粗 */
+.pg-sidebar .menu-item.has-sub.active{background:transparent;color:#111827;font-weight:700}
 .pg-sidebar .menu-item i{font-size:16px;width:18px;text-align:center}
 .pg-sidebar .menu-item .arrow{margin-left:auto;font-size:14px;transition:transform .2s;color:currentColor;opacity:.5}
 .pg-sidebar .menu-item .arrow.open{transform:rotate(90deg)}
@@ -237,6 +259,10 @@
 .blk-pending i{color:#2563EB;font-size:13px}
 .blk-empty{font-size:13px;color:#94A3B8;padding:6px 0}
 
+/* ---- 结论打字机（光标注入 markdown 最后一个块级元素末尾，放完消失） ---- */
+.tw-wrap:not(.tw-done) > :last-child::after{content:'▍';color:#2563EB;margin-left:2px;animation:twBlink .9s steps(1) infinite}
+@keyframes twBlink{50%{opacity:0}}
+
 /* ---- AI 卡片页脚 ---- */
 .qa-ai-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px solid #F1F5F9}
 .qa-ai-footer .qa-ai-actions{display:flex;gap:6px}
@@ -297,6 +323,26 @@
 .qa-log-filters{padding:12px 20px;flex-shrink:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .qa-log-filters select{height:32px;padding:0 10px;border:1px solid #E5E7EB;border-radius:4px;font-size:14px;outline:none;background:#fff;color:#4B5563}
 .qa-log-count{font-size:14px;color:#9CA3AF;margin-left:auto}
+
+/* ---- 开发者日志卡片（日志详情弹窗） ---- */
+.dev-meta-grid{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#374151;margin-bottom:10px}
+.dev-meta-grid b{color:#1E3A5F;font-weight:600}
+.dev-details{margin-top:8px;font-size:13px}
+.dev-details summary{cursor:pointer;color:#2563EB;font-weight:600;display:flex;align-items:center;gap:6px;user-select:none;list-style:none}
+.dev-details summary::before{content:'▸';transition:transform .15s}
+.dev-details[open] summary::before{transform:rotate(90deg)}
+.dev-details summary:hover{color:#1D4ED8}
+.dev-pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;background:#0F172A;color:#E2E8F0;border-radius:6px;padding:10px;margin-top:6px;overflow:auto;max-height:320px;white-space:pre-wrap;word-break:break-all}
+.dev-copy-btn{font-size:12px;color:#2563EB;background:#DBEAFE;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;margin-left:8px;font-weight:400}
+.dev-copy-btn:hover{background:#BFDBFE}
+.fu-chip-static{cursor:default}
+.fu-chip-static:hover{background:#F1F5F9;color:#374151}
+.qa-dh-meta{font-size:12px;color:#9CA3AF;margin-top:2px}
+.qa-msg-time{font-size:11px;color:#9CA3AF;margin-top:2px}
+.aa-step-time{font-size:11px;color:#94A3B8;margin-top:2px;display:flex;align-items:center;gap:4px}
+.dev-error-banner{background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:13px;line-height:1.5}
+.dev-error-banner i{color:#DC2626;margin-right:4px}
+.dev-error-pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;margin-top:4px;color:#991B1B}
 
 /* ---- 表格（数据表） ---- */
 .pg-table-wrap{overflow-x:auto;border-radius:6px;border:1px solid #E5E7EB}

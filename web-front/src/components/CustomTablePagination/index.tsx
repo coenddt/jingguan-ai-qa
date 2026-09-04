@@ -27,18 +27,18 @@ export default function CustomTablePagination({ total, page, rowsPerPage, onPage
           {total === 0 ? '0 条' : `${page * rowsPerPage + 1}-${Math.min((page + 1) * rowsPerPage, total)} / 共 ${total} 条`}
         </div>
         <div className="join">
-          <button className="join-item btn btn-sm btn-ghost whitespace-nowrap" disabled={page === 0}
+          <button className="join-item btn btn-sm btn-light whitespace-nowrap" disabled={page === 0}
             onClick={() => onPageChange(page - 1)}>
             <ChevronLeft size={16} />
           </button>
           {[...Array(totalPages)].map((_, i) => (
             <button key={i}
-              className={`join-item btn btn-sm whitespace-nowrap ${i === page ? 'btn-active btn-primary' : 'btn-ghost'}`}
+              className={`join-item btn btn-sm whitespace-nowrap ${i === page ? 'btn-active btn-primary' : 'btn-light'}`}
               onClick={() => onPageChange(i)}>
               {i + 1}
             </button>
           ))}
-          <button className="join-item btn btn-sm btn-ghost whitespace-nowrap" disabled={page >= totalPages - 1}
+          <button className="join-item btn btn-sm btn-light whitespace-nowrap" disabled={page >= totalPages - 1}
             onClick={() => onPageChange(page + 1)}>
             <ChevronRight size={16} />
           </button>

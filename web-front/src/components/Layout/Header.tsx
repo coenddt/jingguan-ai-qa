@@ -32,7 +32,7 @@ export default function Header({ user }: Props) {
         <div className="avatar" onClick={toggle}>
           {user ? user.charAt(0) : '管'}
           <div className={`dropdown ${open ? 'show' : ''}`} onClick={(e) => e.stopPropagation()}>
-            <div><i className="fas fa-user" /> 个人信息</div>
+            <div onClick={() => { close(); navigate('/profile') }}><i className="fas fa-user" /> 个人信息</div>
             <div style={{ color: '#9CA3AF', fontSize: 14, cursor: 'default' }}><i className="fas fa-code-branch" /> v1.0.0</div>
             <div style={{ borderTop: '1px solid #E5E7EB', color: '#E64398' }} onClick={logout}>
               <i className="fas fa-sign-out-alt" /> 退出登录

@@ -2,10 +2,11 @@
 
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.db.mongo_store import store
+from app.errors import BusinessError
 from app.services import llm_client
 
 router = APIRouter(prefix='/api/models', tags=['models'])
@@ -53,7 +54,7 @@ async def add_model(body: ModelIn):
 async def enable_model(mid: str, body: ModelPatch):
     target = await store.query_one('AiModel($condition:@c0) { _id }', {'c0': {'_id': mid}})
     if not target:
-        raise HTTPException(status_code=404, detail='模型不存在')
+        raise BusinessError('模型不存在', 404)
     if body.enabled:
         rows = await store.query('AiModel($condition:@c0) { _id }', {'c0': {'enabled': True}})
         for r in rows:
@@ -66,7 +67,7 @@ async def enable_model(mid: str, body: ModelPatch):
 async def delete_model(mid: str):
     r = await store.remove('AiModel', {'_id': mid})
     if not r.get('deletedCount'):
-        raise HTTPException(status_code=404, detail='模型不存在')
+        raise BusinessError('模型不存在', 404)
     return {'ok': True}
 
 

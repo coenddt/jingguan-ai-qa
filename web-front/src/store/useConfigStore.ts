@@ -14,6 +14,7 @@ const DEFAULT_CONFIG: AppConfig = {
 interface ConfigStore {
   config: AppConfig
   loaded: boolean
+  loading: boolean
   fetchMethod: () => Promise<void>
   saveMethod: (patch: Partial<AppConfig>) => Promise<void>
 }
@@ -21,10 +22,16 @@ interface ConfigStore {
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   config: DEFAULT_CONFIG,
   loaded: false,
+  loading: false,
   fetchMethod: async () => {
-    if (get().loaded) return
-    const { data } = await configApi.get()
-    set({ config: { ...DEFAULT_CONFIG, ...data }, loaded: true })
+    if (get().loading || get().loaded) return
+    set({ loading: true })
+    try {
+      const { data } = await configApi.get()
+      set({ config: { ...DEFAULT_CONFIG, ...data }, loaded: true })
+    } finally {
+      set({ loading: false })
+    }
   },
   saveMethod: async (patch) => {
     const { data } = await configApi.put(patch)

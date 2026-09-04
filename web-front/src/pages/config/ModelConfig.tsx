@@ -5,10 +5,11 @@ import { modelsApi } from '../../api/modules/models'
 import { useModelStore } from '../../store/useModelStore'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { useSnackbar } from '../../hooks/useSnackbar'
+import Modal from '../../components/Modal'
 import type { ModelItem } from '../../types'
 
 export default function ModelConfig() {
-  const { models, fetchMethod } = useModelStore()
+  const { items: models, fetchMethod } = useModelStore()
   const [addOpen, setAddOpen] = useState(false)
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -105,10 +106,8 @@ export default function ModelConfig() {
         </div>
       </div>
 
-      {addOpen && (
-        <dialog className="modal modal-open" onClick={resetAdd}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-lg mb-4">新增模型</h3>
+      <Modal open={addOpen} onClose={resetAdd}
+        title={<h3 className="font-bold text-lg">新增模型</h3>} headerClassName="mb-4">
             <div className="space-y-3">
               <div>
                 <label className="text-sm font-bold text-gray-600 mb-1 block">Base URL</label>
@@ -136,9 +135,7 @@ export default function ModelConfig() {
                 <button className="btn btn-primary btn-sm whitespace-nowrap" disabled={!testOk} onClick={submitAdd}>添加</button>
               </div>
             </div>
-          </div>
-        </dialog>
-      )}
+      </Modal>
 
       <ConfirmDialog open={!!delFor} title="删除模型" loading={delLoading}
         content={`确定删除模型「${delFor?.name ?? ''}」吗？`}

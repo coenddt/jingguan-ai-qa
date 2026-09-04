@@ -3,6 +3,7 @@ import { MessageSquarePlus, MoreVertical, Pin, PinOff, SquarePen, Trash2, X } fr
 import type { SessionItem } from '../../types'
 import { qaApi } from '../../api/modules/qa'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import Modal from '../../components/Modal'
 import { useSessionStore } from '../../store/useSessionStore'
 import { useSnackbar } from '../../hooks/useSnackbar'
 import { formatDateTime } from '../../utils/date'
@@ -16,7 +17,7 @@ interface Props {
 }
 
 export default function SessionList({ open, activeId, onClose, onSelect, onNew }: Props) {
-  const { sessions, fetchMethod } = useSessionStore()
+  const { items: sessions, fetchMethod } = useSessionStore()
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [renameFor, setRenameFor] = useState<SessionItem | null>(null)
   const [renameText, setRenameText] = useState('')
@@ -98,20 +99,16 @@ export default function SessionList({ open, activeId, onClose, onSelect, onNew }
         ))}
       </div>
 
-      {renameFor && (
-        <dialog className="modal modal-open" onClick={() => setRenameFor(null)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-lg mb-3">重命名会话</h3>
+      <Modal open={!!renameFor} onClose={() => setRenameFor(null)}
+        title={<h3 className="font-bold text-lg">重命名会话</h3>} headerClassName="mb-3"
+        footer={<>
+          <button className="btn btn-ghost whitespace-nowrap" onClick={() => setRenameFor(null)}>取消</button>
+          <button className="btn btn-primary whitespace-nowrap" onClick={submitRename}>保存</button>
+        </>}>
             <input className="input input-bordered w-full" value={renameText} autoFocus
               onChange={(e) => setRenameText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && submitRename()} />
-            <div className="modal-action">
-              <button className="btn btn-ghost whitespace-nowrap" onClick={() => setRenameFor(null)}>取消</button>
-              <button className="btn btn-primary whitespace-nowrap" onClick={submitRename}>保存</button>
-            </div>
-          </div>
-        </dialog>
-      )}
+      </Modal>
       <ConfirmDialog open={!!delFor} title="删除会话" loading={delLoading}
         content={`确定删除「${delFor?.title ?? ''}」吗？会话内消息将一并删除。`}
         onClose={() => setDelFor(null)} onConfirm={submitDelete} />

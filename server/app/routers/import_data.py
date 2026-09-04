@@ -3,12 +3,14 @@
 import io
 import time
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook, load_workbook
 from pydantic import BaseModel
 
 from app.db.mongo_store import store
+from app.errors import BusinessError
+from app.services.pagination import paged_query
 
 router = APIRouter(prefix='/api/import', tags=['import'])
 
@@ -32,7 +34,7 @@ class _SkipRow(Exception):
 @router.get('/template')
 async def template(type: str = 'commercial'):
     if type not in _TYPES:
-        raise HTTPException(status_code=400, detail='type 参数不合法')
+        raise BusinessError('type 参数不合法', 400)
     wb = Workbook()
     ws = wb.active
     ws.title = '模板'
@@ -50,7 +52,7 @@ async def template(type: str = 'commercial'):
 @router.post('/upload')
 async def upload(type: str, year: int, file: UploadFile):
     if type not in _TYPES:
-        raise HTTPException(status_code=400, detail='type 参数不合法')
+        raise BusinessError('type 参数不合法', 400)
     cols = TEMPLATE_COLUMNS[type]
     try:
         wb = load_workbook(io.BytesIO(await file.read()), read_only=True)
@@ -58,10 +60,10 @@ async def upload(type: str, year: int, file: UploadFile):
         rows = list(ws.iter_rows(values_only=True))
     except Exception:
         await _log(type, year, file.filename, 0, 0, '失败-格式不符', '文件解析失败')
-        raise HTTPException(status_code=400, detail='xlsx 解析失败')
+        raise BusinessError('xlsx 解析失败', 400)
     if not rows or list(rows[0])[:len(cols)] != cols:
         await _log(type, year, file.filename, max(0, len(rows) - 1), 0, '失败-格式不符', '表头与模板不一致')
-        raise HTTPException(status_code=400, detail='表头与模板不一致，请下载模板填写')
+        raise BusinessError('表头与模板不一致，请下载模板填写', 400)
 
     docs: list[dict] = []
     errors: list[str] = []
@@ -120,10 +122,5 @@ async def _log(t: str, year: int, fn: str, total: int, ok: int, status: str, det
 @router.get('/log')
 async def import_log(page: int = 1, pageSize: int = 10, type: str = ''):
     cond = {'type': type} if type else {}
-    total = await store.count('ImportLog', cond)
-    rows = await store.query(
-        'ImportLog($condition:@c0,$sort:@s0,$skip:@sk,$limit:@l) '
-        '{ _id, type, year, fileName, totalRows, successRows, status, detail, userName, createdAt }',
-        {'c0': cond, 's0': {'createdAt': -1}, 'sk': (page - 1) * pageSize, 'l': pageSize},
-    )
-    return {'items': [{**r, 'id': r['_id']} for r in rows], 'total': total}
+    return await paged_query('ImportLog', cond, page, pageSize,
+                             '_id, type, year, fileName, totalRows, successRows, status, detail, userName, createdAt')

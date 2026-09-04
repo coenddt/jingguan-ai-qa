@@ -1,9 +1,11 @@
 """回复校对：提交/列表/处理"""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.db.mongo_store import store
+from app.errors import BusinessError
+from app.services.pagination import paged_query
 from app.services import qa_service
 
 router = APIRouter(prefix='/api/feedback', tags=['feedback'])
@@ -43,18 +45,13 @@ async def list_feedback(page: int = 1, pageSize: int = 10,
         cond['userName'] = {'$regex': userSearch}
     if status:
         cond['status'] = status
-    total = await store.count('Feedback', cond)
-    rows = await store.query(
-        'Feedback($condition:@c0,$sort:@s0,$skip:@sk,$limit:@l) '
-        '{ _id, question, answer, userName, description, status, remark, createdAt }',
-        {'c0': cond, 's0': {'createdAt': -1}, 'sk': (page - 1) * pageSize, 'l': pageSize},
-    )
-    return {'items': [{**r, 'id': r['_id']} for r in rows], 'total': total}
+    return await paged_query('Feedback', cond, page, pageSize,
+                             '_id, question, answer, userName, description, status, remark, createdAt')
 
 
 @router.put('/{fid}')
 async def update_feedback(fid: str, body: FeedbackPut):
     r = await store.update('Feedback', {'_id': fid}, {'status': body.status, 'remark': body.remark})
     if not r:
-        raise HTTPException(status_code=404, detail='反馈不存在')
+        raise BusinessError('反馈不存在', 404)
     return {'ok': True}

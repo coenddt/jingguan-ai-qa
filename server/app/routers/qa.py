@@ -2,7 +2,7 @@
 
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.agent.prompt_builder import build_retry_prompt, build_system_prompt
@@ -10,8 +10,9 @@ from app.agent.step_tracker import StepTracker
 from app.db.mongo_store import store
 from app.errors import BusinessError
 from app.services import llm_client, query_cache, query_executor
-from app.services.query_guard import GuardError, verify
 from app.services import qa_service
+from app.services.query_guard import GuardError, verify
+from app.services.pagination import paged_query
 
 router = APIRouter(prefix='/api/qa', tags=['qa'])
 
@@ -104,10 +105,7 @@ async def list_messages(sid: str):
 
 @router.post('/ask')
 async def ask(body: AskIn):
-    try:
-        return await qa_service.ask(body.question, body.session_id, body.source_keys)
-    except BusinessError as e:
-        raise HTTPException(status_code=e.status, detail=str(e))
+    return await qa_service.ask(body.question, body.session_id, body.source_keys)
 
 
 @router.get('/quick-asks')
@@ -132,25 +130,26 @@ async def quick_asks():
 @router.get('/log')
 async def qa_log(page: int = 1, pageSize: int = 20, days: int = 30,
                  kw: str = '', userName: str = ''):
-    msgs = await store.query(
-        'QaMessage($condition:@c0,$sort:@s0) { _id, sessionId, role, content, createdAt }',
-        {'c0': {'role': 'user'}, 's0': {'createdAt': -1}},
-    )
     since = (time.time() - days * 86400) * 1000
-    sessions = {s['_id']: s for s in await store.query(
-        'QaSession { _id, title, userName }')}
-    items = []
-    for m in msgs:
-        if m.get('createdAt', 0) < since:
-            continue
-        s = sessions.get(m['sessionId'], {})
-        if userName and userName not in s.get('userName', ''):
-            continue
-        if kw and kw not in m.get('content', ''):
-            continue
-        items.append({'id': m['_id'], 'sessionId': m['sessionId'], 'question': m['content'],
-                      'userName': s.get('userName', ''), 'title': s.get('title', ''),
-                      'createdAt': m.get('createdAt')})
-    total = len(items)
-    start = (page - 1) * pageSize
-    return {'items': items[start:start + pageSize], 'total': total}
+    cond: dict = {'role': 'user', 'createdAt': {'$gte': since}}
+    if kw:
+        cond['content'] = {'$regex': kw}
+    if userName:
+        matched = await store.query('QaSession($condition:@c0) { _id }',
+                                    {'c0': {'userName': {'$regex': userName}}})
+        ids = [s['_id'] for s in matched]
+        if not ids:
+            return {'items': [], 'total': 0}
+        cond['sessionId'] = {'$in': ids}
+    result = await paged_query('QaMessage', cond, page, pageSize,
+                               '_id, sessionId, content, createdAt')
+    if result['items']:
+        sids = {r['sessionId'] for r in result['items']}
+        srows = await store.query('QaSession($condition:@c0) { _id, title, userName }',
+                                  {'c0': {'_id': {'$in': list(sids)}}})
+        smap = {s['_id']: s for s in srows}
+        result['items'] = [{**r, 'question': r['content'],
+                            'userName': smap.get(r['sessionId'], {}).get('userName', ''),
+                            'title': smap.get(r['sessionId'], {}).get('title', '')}
+                           for r in result['items']]
+    return result

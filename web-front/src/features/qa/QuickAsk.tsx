@@ -2,21 +2,13 @@ import { useEffect, useState } from 'react'
 import { Star, X, Zap } from 'lucide-react'
 import { qaApi } from '../../api/modules/qa'
 import { useSnackbar } from '../../hooks/useSnackbar'
+import Modal from '../../components/Modal'
+import { readFavorites, writeFavorites } from '../../utils/favorites'
 
 interface Props {
   open: boolean
   onClose: () => void
   onAsk: (q: string) => void
-}
-
-const FAV_KEY = 'jg_favorites'
-
-function readFavs(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(FAV_KEY) || '[]') as string[]
-  } catch {
-    return []
-  }
 }
 
 export default function QuickAsk({ open, onClose, onAsk }: Props) {
@@ -28,7 +20,7 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
 
   useEffect(() => {
     if (!open) return
-    setFavs(readFavs())
+    setFavs(readFavorites())
     qaApi.getQuickAsks()
       .then(({ data }) => {
         setHotEnabled(data.enabled)
@@ -42,17 +34,13 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
 
   const removeFav = (q: string) => {
     const next = favs.filter((f) => f !== q)
-    localStorage.setItem(FAV_KEY, JSON.stringify(next))
+    writeFavorites(next)
     setFavs(next)
   }
 
   return (
-    <dialog className="modal modal-open" onClick={onClose}>
-      <div className="modal-box max-w-lg" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-lg flex items-center gap-1.5"><Zap size={18} className="text-gold-deep" /> 快捷提问</h3>
-          <button className="btn btn-ghost btn-xs btn-square" onClick={onClose}><X size={16} /></button>
-        </div>
+    <Modal open={open} onClose={onClose} boxClassName="max-w-lg" showClose
+      title={<h3 className="font-bold text-lg flex items-center gap-1.5"><Zap size={18} className="text-gold-deep" /> 快捷提问</h3>}>
         <div role="tablist" className="tabs tabs-bordered mt-2">
           {hotEnabled && (
             <button role="tab" className={`tab whitespace-nowrap gap-1 ${tab === 'hot' ? 'tab-active' : ''}`}
@@ -78,7 +66,6 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
             </div>
           )) : <p className="text-sm text-gray-400 py-4">暂无收藏问题，在消息上点 ☆ 收藏</p>)}
         </div>
-      </div>
-    </dialog>
+    </Modal>
   )
 }

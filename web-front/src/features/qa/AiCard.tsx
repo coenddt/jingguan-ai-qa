@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, ChevronDown, Copy, ThumbsDown } from 'lucide-react'
 import type { QaAskResp } from '../../types'
 import MarkdownView from '../../components/MarkdownView'
+import Modal from '../../components/Modal'
 import ChartView from './charts'
 import TtsButton from './TtsButton'
 import { feedbackApi } from '../../api/modules/feedback'
@@ -64,7 +65,7 @@ export default function AiCard({ resp, question }: { resp: QaAskResp; question: 
       {/* ③ 数据表格 */}
       {!!resp.rows.length && (
         <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="table table-sm">
+          <table className="table table-sm" style={{ minWidth: 750 }}>
             <thead>
               <tr>{resp.columns.map((c) => <th key={c} className="whitespace-nowrap">{c}</th>)}</tr>
             </thead>
@@ -133,19 +134,15 @@ export default function AiCard({ resp, question }: { resp: QaAskResp; question: 
       )}
 
       {/* 反馈弹窗 */}
-      {fbOpen && (
-        <dialog className="modal modal-open" onClick={() => setFbOpen(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-lg mb-3">回复校对</h3>
+      <Modal open={fbOpen} onClose={() => setFbOpen(false)}
+        title={<h3 className="font-bold text-lg">回复校对</h3>} headerClassName="mb-3"
+        footer={<>
+          <button className="btn btn-ghost whitespace-nowrap" onClick={() => setFbOpen(false)}>取消</button>
+          <button className="btn btn-primary whitespace-nowrap" disabled={!fbText.trim()} onClick={submitFeedback}>提交</button>
+        </>}>
             <textarea className="textarea textarea-bordered w-full h-24" placeholder="描述问题（如数据不符/图表有误）"
               value={fbText} onChange={(e) => setFbText(e.target.value)} />
-            <div className="modal-action">
-              <button className="btn btn-ghost whitespace-nowrap" onClick={() => setFbOpen(false)}>取消</button>
-              <button className="btn btn-primary whitespace-nowrap" disabled={!fbText.trim()} onClick={submitFeedback}>提交</button>
-            </div>
-          </div>
-        </dialog>
-      )}
+      </Modal>
     </div>
   )
 }

@@ -12,19 +12,16 @@ import InputBar from '../features/qa/InputBar'
 import SourcePicker from '../features/qa/SourcePicker'
 import QuickAsk from '../features/qa/QuickAsk'
 import { useSnackbar } from '../hooks/useSnackbar'
+import { readJsonLS, writeJsonLS } from '../utils/localStorage'
 
 const SOURCES_KEY = 'jg_sources'
 
 function loadSelectedSources(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(SOURCES_KEY) || '[]') as string[]
-  } catch {
-    return []
-  }
+  return readJsonLS<string[]>(SOURCES_KEY, [])
 }
 
 export default function Qa() {
-  const { sessions, fetchMethod } = useSessionStore()
+  const { items: sessions, fetchMethod } = useSessionStore()
   const { config, fetchMethod: fetchConfig } = useConfigStore()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MsgItem[]>([])
@@ -46,7 +43,7 @@ export default function Qa() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(SOURCES_KEY, JSON.stringify(selectedSources))
+    writeJsonLS(SOURCES_KEY, selectedSources)
   }, [selectedSources])
 
   const loadMessages = useCallback(async (id: string | null) => {

@@ -176,8 +176,8 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
         display_fields = used_query['fields']
     display_fields = [f for f in display_fields if f != '_id']
 
-    stats = _build_stats(rows, numeric_field or (display_fields[0] if display_fields else None))
-    stats = _build_stats(rows, numeric_field) if numeric_field else stats
+    stats = _build_stats(rows, numeric_field) if numeric_field else _build_stats(
+        rows, display_fields[0] if display_fields else None)
     chart = _build_chart(question, used_query, rows)
     findings = _build_findings(stats, numeric_field)
 

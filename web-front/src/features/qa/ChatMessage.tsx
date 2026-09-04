@@ -1,27 +1,18 @@
 import { useState } from 'react'
 import { Check, Copy, Pencil, RefreshCcw, Star, X } from 'lucide-react'
 import { useSnackbar } from '../../hooks/useSnackbar'
+import { readFavorites, writeFavorites } from '../../utils/favorites'
 
 interface Props {
   content: string
   onResend: (text: string) => void
 }
 
-const FAV_KEY = 'jg_favorites'
-
-function readFavs(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(FAV_KEY) || '[]') as string[]
-  } catch {
-    return []
-  }
-}
-
 export default function ChatMessage({ content, onResend }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(content)
   const [copied, setCopied] = useState(false)
-  const [faved, setFaved] = useState(readFavs().includes(content))
+  const [faved, setFaved] = useState(readFavorites().includes(content))
   const { showSnackbar } = useSnackbar()
 
   const copy = async () => {
@@ -31,9 +22,9 @@ export default function ChatMessage({ content, onResend }: Props) {
   }
 
   const toggleFav = () => {
-    const favs = readFavs()
+    const favs = readFavorites()
     const next = faved ? favs.filter((f) => f !== content) : [...favs, content]
-    localStorage.setItem(FAV_KEY, JSON.stringify(next))
+    writeFavorites(next)
     setFaved(!faved)
     showSnackbar(faved ? '已取消收藏' : '已收藏', 'success')
   }

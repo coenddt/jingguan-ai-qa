@@ -2,45 +2,37 @@ import { useEffect, useState } from 'react'
 import { RefreshCcw } from 'lucide-react'
 import PageHeader from '../components/PageHeader'
 import SearchFilter from '../components/SearchFilter'
+import Modal from '../components/Modal'
 import CustomTablePagination from '../components/CustomTablePagination'
 import EmptyTableRow from '../components/EmptyTableRow'
 import TableSkeleton from '../components/TableSkeleton'
 import MarkdownView from '../components/MarkdownView'
 import { feedbackApi } from '../api/modules/feedback'
 import { useSnackbar } from '../hooks/useSnackbar'
+import { usePagedList } from '../hooks/usePagedList'
 import { formatDateTime } from '../utils/date'
 import type { FeedbackItem } from '../types'
 
 export default function Feedback() {
-  const [items, setItems] = useState<FeedbackItem[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(10)
-  const [loading, setLoading] = useState(false)
-  const [filters, setFilters] = useState<Record<string, string>>({})
+  const { showSnackbar } = useSnackbar()
+  const {
+    items, total, page, rowsPerPage, loading, search, reset, changePage, changeRowsPerPage, refresh,
+  } = usePagedList<FeedbackItem>(
+    async ({ page, pageSize, filters }) => {
+      const { data } = await feedbackApi.list({
+        page: page + 1, pageSize,
+        search: filters.search || undefined, userSearch: filters.userSearch || undefined,
+        status: filters.status || undefined,
+      })
+      return data
+    },
+    { onError: showSnackbar, errorMessage: '反馈列表加载失败' },
+  )
   const [detail, setDetail] = useState<FeedbackItem | null>(null)
   const [remark, setRemark] = useState('')
-  const { showSnackbar } = useSnackbar()
-
-  const load = async (p = page, size = rowsPerPage, f = filters) => {
-    setLoading(true)
-    try {
-      const { data } = await feedbackApi.list({
-        page: p + 1, pageSize: size,
-        search: f.search || undefined, userSearch: f.userSearch || undefined,
-        status: f.status || undefined,
-      })
-      setItems(data.items)
-      setTotal(data.total)
-    } catch {
-      showSnackbar('反馈列表加载失败', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   useEffect(() => {
-    load(0, rowsPerPage, {})
+    refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -50,13 +42,13 @@ export default function Feedback() {
     showSnackbar('已标记处理完成', 'success')
     setDetail(null)
     setRemark('')
-    load()
+    refresh()
   }
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <PageHeader title="回复校对" subtitle="用户反馈的处理工作台"
-        onRefresh={() => load(page, rowsPerPage, filters)} />
+        onRefresh={refresh} />
       <SearchFilter
         fields={[
           { name: 'search', type: 'text', placeholder: '搜索问题内容' },
@@ -65,13 +57,12 @@ export default function Feedback() {
             { value: '', label: '全部' }, { value: '待处理', label: '待处理' }, { value: '已处理', label: '已处理' },
           ] },
         ]}
-        initialValues={filters}
-        onSearch={(v) => { setFilters(v); setPage(0); load(0, rowsPerPage, v) }}
-        onReset={() => { setFilters({}); setPage(0); load(0, rowsPerPage, {}) }}
+        onSearch={search}
+        onReset={reset}
       />
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mt-4 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="table">
+          <table className="table" style={{ minWidth: 850 }}>
             <thead>
               <tr>
                 <th className="w-[160px]">时间</th>
@@ -103,14 +94,19 @@ export default function Feedback() {
           </table>
         </div>
         <CustomTablePagination total={total} page={page} rowsPerPage={rowsPerPage}
-          onPageChange={(p) => { setPage(p); load(p, rowsPerPage, filters) }}
-          onRowsPerPageChange={(n) => { setRowsPerPage(n); setPage(0); load(0, n, filters) }} />
+          onPageChange={changePage}
+          onRowsPerPageChange={changeRowsPerPage} />
       </div>
 
-      {detail && (
-        <dialog className="modal modal-open" onClick={() => setDetail(null)}>
-          <div className="modal-box max-w-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-lg mb-3">反馈详情</h3>
+      <Modal open={!!detail} onClose={() => setDetail(null)}
+        title={<h3 className="font-bold text-lg">反馈详情</h3>} headerClassName="mb-3"
+        boxClassName="max-w-xl"
+        footer={<>
+          <button className="btn btn-ghost whitespace-nowrap" onClick={() => setDetail(null)}>关闭</button>
+          <button className="btn btn-primary whitespace-nowrap" onClick={markDone}>标记已处理</button>
+        </>}>
+        {detail && (
+          <>
             <div className="text-sm text-gray-500 space-y-2 mb-3">
               <div><span className="font-bold text-gray-700">原问题：</span>{detail.question}</div>
               <div><span className="font-bold text-gray-700">用户描述：</span>{detail.description || '-'}</div>
@@ -120,13 +116,9 @@ export default function Feedback() {
             </div>
             <textarea className="textarea textarea-bordered w-full h-20 text-sm" placeholder="处理备注"
               value={remark} onChange={(e) => setRemark(e.target.value)} />
-            <div className="modal-action">
-              <button className="btn btn-ghost whitespace-nowrap" onClick={() => setDetail(null)}>关闭</button>
-              <button className="btn btn-primary whitespace-nowrap" onClick={markDone}>标记已处理</button>
-            </div>
-          </div>
-        </dialog>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

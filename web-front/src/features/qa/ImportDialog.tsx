@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
 import { importApi } from '../../api/modules/importApi'
+import type { ImportLogItem } from '../../types'
 import EmptyTableRow from '../../components/EmptyTableRow'
 import TableSkeleton from '../../components/TableSkeleton'
 import CustomTablePagination from '../../components/CustomTablePagination'
+import Modal from '../../components/Modal'
 import { useSnackbar } from '../../hooks/useSnackbar'
+import { usePagedList } from '../../hooks/usePagedList'
 import { formatDateTime } from '../../utils/date'
 
 interface Props {
@@ -19,28 +22,21 @@ export default function ImportDialog({ open, onClose }: Props) {
   const [year, setYear] = useState(2026)
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [logs, setLogs] = useState<{ id: string; type: string; year: number; fileName: string; status: string; detail: string; createdAt: string }[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(5)
-  const [loading, setLoading] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
   const { showSnackbar } = useSnackbar()
-
-  const loadLogs = async (p = page, size = rowsPerPage, t = '') => {
-    setLoading(true)
-    try {
-      const { data } = await importApi.listLog({ page: p + 1, pageSize: size, type: t || undefined })
-      setLogs(data.items)
-      setTotal(data.total)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const {
+    items: logs, total, page, rowsPerPage, loading, changePage, changeRowsPerPage, refresh,
+  } = usePagedList<ImportLogItem>(
+    async ({ page, pageSize }) => {
+      const { data } = await importApi.listLog({ page: page + 1, pageSize })
+      return data
+    },
+    { pageSize: 5, onError: showSnackbar, errorMessage: '导入记录加载失败' },
+  )
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
-    loadLogs(page, rowsPerPage)
+    refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -56,6 +52,7 @@ export default function ImportDialog({ open, onClose }: Props) {
       if (data.ok) {
         showSnackbar(`导入${data.status}：成功 ${data.success}/${data.total} 条`, 'success')
         onClose()
+        refresh()
       } else {
         showSnackbar(`导入失败：${data.errors?.[0] || data.status}`, 'error')
       }
@@ -69,9 +66,8 @@ export default function ImportDialog({ open, onClose }: Props) {
   }
 
   return (
-    <dialog className="modal modal-open" onClick={onClose}>
-      <div className="modal-box max-w-2xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-bold text-lg mb-4">台账导入</h3>
+    <Modal open={open} onClose={onClose} boxClassName="max-w-2xl"
+      title={<h3 className="font-bold text-lg">台账导入</h3>} headerClassName="mb-4">
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div>
             <label className="text-xs font-bold text-gray-500 mb-1 block">台账类型</label>
@@ -105,7 +101,7 @@ export default function ImportDialog({ open, onClose }: Props) {
 
         <h4 className="font-bold text-gray-700 text-sm mb-2">导入记录</h4>
         <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="table table-sm">
+          <table className="table table-sm" style={{ minWidth: 850 }}>
             <thead>
               <tr>
                 <th className="w-[90px]">类型</th>
@@ -130,8 +126,8 @@ export default function ImportDialog({ open, onClose }: Props) {
           </table>
         </div>
         <CustomTablePagination total={total} page={page} rowsPerPage={rowsPerPage}
-          onPageChange={setPage} onRowsPerPageChange={(n: number) => { setRowsPerPage(n); setPage(0) }} />
-      </div>
-    </dialog>
+          onPageChange={changePage}
+          onRowsPerPageChange={changeRowsPerPage} />
+    </Modal>
   )
 }

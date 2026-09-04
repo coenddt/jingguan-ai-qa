@@ -57,10 +57,10 @@ export default function SearchFilter({ fields, onSearch, onReset, initialValues 
           </div>
         ))}
         <div className="col-span-12 lg:col-auto flex gap-1.5 whitespace-nowrap">
-          <button className="btn btn-primary px-5 h-10 min-h-0 rounded-2xl font-bold" onClick={() => onSearch(values)}>
+          <button className="btn btn-primary whitespace-nowrap px-5 h-10 min-h-0 rounded-2xl font-bold" onClick={() => onSearch(values)}>
             <Search size={18} /> 检索
           </button>
-          <button className="btn btn-ghost px-4 h-10 min-h-0 rounded-2xl font-bold border border-gray-200 text-gray-500"
+          <button className="btn btn-ghost whitespace-nowrap px-4 h-10 min-h-0 rounded-2xl font-bold border border-gray-200 text-gray-500"
             onClick={() => { setValues(initialValues); onReset() }}>
             <RotateCcw size={18} /> 重置
           </button>

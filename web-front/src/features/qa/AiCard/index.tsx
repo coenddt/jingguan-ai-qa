@@ -1,6 +1,7 @@
-/** AI 回答结构化卡片：分析过程 → 数据发现 → 表格 → 统计 → 图表 → 结论 → 页脚 → 追问 */
+/** AI 回答结构化卡片（原型 qa-ai-card 1:1）：分析过程 → 数据发现 → 数据表格 → 数据统计 → 数据可视化 → 结论 → 页脚 → 追问
+ *  流式：streaming 时按块到达顺序渲染，未到达的块显示生成中占位 */
 
-import { useCallback, useState, type ChangeEvent } from 'react'
+import { useCallback, useState } from 'react'
 import type { QaAskResp } from '../../../types'
 import MarkdownView from '../../../components/MarkdownView'
 import ChartView from '../charts'
@@ -15,20 +16,40 @@ import AiFollowUps from './AiFollowUps'
 import AiFeedbackModal from './AiFeedbackModal'
 
 interface Props {
-  resp: QaAskResp
+  resp: Partial<QaAskResp>
   question: string
+  streaming?: boolean
 }
 
-export default function AiCard({ resp, question }: Props) {
-  const [openSteps, setOpenSteps] = useState(false)
+/** 原型 qa-ai-module：编号圆点标题 + 内容 */
+function Module({ num, title, children }: { num: number; title: string; children: React.ReactNode }) {
+  return (
+    <div className="qa-ai-module">
+      <div className="mod-title"><span className="mod-num">{num}</span>{title}</div>
+      {children}
+    </div>
+  )
+}
+
+/** 流式中未到达块的占位 */
+function BlkPending() {
+  return (
+    <div className="blk-pending">
+      <i className="fas fa-circle-notch fa-spin" /> 正在生成…
+    </div>
+  )
+}
+
+export default function AiCard({ resp, question, streaming }: Props) {
+  const [openSteps, setOpenSteps] = useState(!!streaming)
   const [copied, setCopied] = useState(false)
   const [fbOpen, setFbOpen] = useState(false)
   const { showSnackbar } = useSnackbar()
 
-  const changeSteps = useCallback((e: ChangeEvent<HTMLInputElement>) => setOpenSteps(e.target.checked), [])
+  const toggleSteps = useCallback(() => setOpenSteps((v) => !v), [])
 
   const handleCopy = useCallback(() => {
-    copyToClipboard(buildAiCardCopyText(resp))
+    copyToClipboard(buildAiCardCopyText(resp as QaAskResp))
       .then(() => {
         setCopied(true)
         window.setTimeout(() => setCopied(false), 1500)
@@ -39,39 +60,71 @@ export default function AiCard({ resp, question }: Props) {
   const openFeedback = useCallback(() => setFbOpen(true), [])
   const closeFeedback = useCallback(() => setFbOpen(false), [])
 
+  // 流式中按「块是否已到达」渲染：到达→内容，未到达→占位
+  const hasFindings = !streaming || 'findings' in resp
+  const hasTable = !streaming || 'columns' in resp
+  const hasStats = !streaming || 'stats' in resp
+  const hasChart = !streaming || 'chart' in resp
+  const hasText = !streaming || 'text' in resp
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4 max-w-[860px]">
-      {/* ① 分析过程 */}
-      <AiSteps open={openSteps} onChange={changeSteps} steps={resp.steps} />
+    <div className="qa-ai-msg">
+      <div className="qa-ai-card">
+        <div className="qa-ai-avatar" style={{ marginBottom: 12 }}><i className="fas fa-robot" /></div>
 
-      {/* ② 数据发现 */}
-      {!!resp.findings.length && (
-        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-          {resp.findings.map((f, i) => <li key={i}>{f}</li>)}
-        </ul>
-      )}
+        {/* ① 分析过程（流式时默认展开，逐步点亮） */}
+        <AiSteps open={openSteps} onToggle={toggleSteps} steps={resp.steps ?? []} />
 
-      {/* ③ 数据表格 */}
-      <AiDataTable columns={resp.columns} rows={resp.rows} totalCount={resp.stats.count} />
+        {/* ② 数据发现 */}
+        <Module num={1} title="数据发现">
+          {hasFindings ? (
+            <div className="mod-body">
+              {(resp.findings ?? []).map((f, i) => <div key={i} className="dot-li">{f}</div>)}
+            </div>
+          ) : <BlkPending />}
+        </Module>
 
-      {/* ④ 数据统计 */}
-      <AiStatsGrid stat={resp.stats} />
+        {/* ③ 数据表格 */}
+        <Module num={2} title="数据表格">
+          {hasTable ? (
+            !!resp.rows?.length ? (
+              <AiDataTable columns={resp.columns ?? []} rows={resp.rows} totalCount={resp.stats?.count ?? 0} />
+            ) : <div className="blk-empty">无表格数据</div>
+          ) : <BlkPending />}
+        </Module>
 
-      {/* ⑤ 数据可视化 */}
-      {resp.chart && <ChartView chart={resp.chart} />}
+        {/* ④ 数据统计 */}
+        <Module num={3} title="数据统计">
+          {hasStats ? <AiStatsGrid stat={resp.stats!} /> : <BlkPending />}
+        </Module>
 
-      {/* ⑥ 结论 */}
-      <MarkdownView content={resp.text} />
+        {/* ⑤ 数据可视化 */}
+        <Module num={4} title="数据可视化">
+          {hasChart ? (
+            resp.chart && (
+              <div className="qa-ai-chart">
+                <div className="chart-desc">{resp.chart.title}{resp.chart.unit ? `（单位：${resp.chart.unit}）` : ''}：</div>
+                <ChartView chart={resp.chart} />
+              </div>
+            )
+          ) : <BlkPending />}
+        </Module>
 
-      {/* 页脚 */}
-      <AiCardFooter resp={resp} copied={copied} onCopy={handleCopy} onFeedback={openFeedback} />
+        {/* 结论 */}
+        {hasText ? (
+          !!resp.text && <MarkdownView content={resp.text} />
+        ) : <BlkPending />}
 
-      {/* ⑦ 追问 chips */}
-      <AiFollowUps followUps={resp.follow_ups} />
-
-      {/* 反馈弹窗 */}
-      <AiFeedbackModal open={fbOpen} sessionId={resp.session_id} question={question} answer={resp.text}
-        onClose={closeFeedback} />
+        {/* 页脚 + 追问 chips：完成后才渲染 */}
+        {!streaming && resp.meta && (
+          <>
+            <AiCardFooter resp={resp as QaAskResp} copied={copied} onCopy={handleCopy} onFeedback={openFeedback} />
+            <AiFollowUps followUps={resp.follow_ups ?? []} />
+            <AiFeedbackModal open={fbOpen} sessionId={resp.session_id ?? ''} question={question} answer={resp.text ?? ''}
+              onClose={closeFeedback} />
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,22 +1,33 @@
-/** 问数页顶栏：会话列表开关 + 当前会话标题 */
-
-import { PanelLeftOpen } from 'lucide-react'
+/** 问数主区顶栏（原型 qa-right-hdr）：侧栏开关 + 会话标题 + 数据源指示 + 日志入口 */
 
 interface Props {
   title: string
   listOpen: boolean
   onOpenList: () => void
+  sourceLabel: string
+  onOpenSources: () => void
+  onSwitchView: (v: 'chat' | 'log') => void
 }
 
-export default function QaTopBar({ title, listOpen, onOpenList }: Props) {
+export default function QaTopBar({ title, listOpen, onOpenList, sourceLabel, onOpenSources, onSwitchView }: Props) {
   return (
-    <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-200 bg-white/70">
-      {!listOpen && (
-        <button className="btn btn-ghost btn-sm btn-square" title="会话列表" onClick={onOpenList}>
-          <PanelLeftOpen size={18} />
+    <div className="qa-right-hdr">
+      <div className="qa-rh-left">
+        {!listOpen && (
+          <button className="qa-rh-btn" title="侧边栏" onClick={onOpenList}>
+            <i className="fas fa-outdent" />
+          </button>
+        )}
+      </div>
+      <div className="qa-rh-center">{title}</div>
+      <div className="qa-rh-right">
+        <button className="rh-btn" title="选择问数数据源" onClick={onOpenSources}>
+          <i className="fas fa-paperclip" /> <span>{sourceLabel}</span>
         </button>
-      )}
-      <span className="font-bold text-gray-700 text-sm">{title}</span>
+        <button className="rh-btn" title="查看问数日志" onClick={() => onSwitchView('log')}>
+          <i className="fas fa-clock" /> 日志
+        </button>
+      </div>
     </div>
   )
 }

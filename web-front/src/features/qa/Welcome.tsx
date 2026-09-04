@@ -1,31 +1,43 @@
-/** 新会话欢迎页：开场白 + 推荐问题 */
+/** 新会话欢迎页（原型 qa-welcome 1:1）：你好 / 我是经管之星·AI问数助手 / 开场白 / 你可以这么问我 */
 
-import { Sparkles } from 'lucide-react'
 import { useConfigStore } from '../../store/useConfigStore'
 
 export default function Welcome({ onAsk }: { onAsk: (q: string) => void }) {
   const greeting = useConfigStore((s) => s.config.greeting)
 
+  // 原型 qa-quick-row：每行最多两个按钮
+  const rows: string[][] = []
+  greeting.questions.forEach((q, i) => {
+    if (i % 2 === 0) rows.push([q])
+    else rows[rows.length - 1].push(q)
+  })
+
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6">
-      <div className="w-12 h-12 rounded-2xl gold-gradient flex items-center justify-center text-[#0f172a] mb-4">
-        <Sparkles size={26} strokeWidth={1.5} />
+    <div className="qa-welcome">
+      <div className="qa-welcome-inner">
+        <h1>你好</h1>
+        <h2>我是经管之星·AI问数助手</h2>
+        {/* 原型 renderGreeting：关闭开场白时隐藏引导语与快捷提问区 */}
+        {greeting.enabled !== false && (
+          <>
+            <p className="qa-desc">{greeting.text || '欢迎使用智能AI问数，您可以向我咨询经营数据、报表分析相关问题。'}</p>
+            {!!greeting.questions.length && (
+              <div className="qa-quick-section">
+                <div className="qa-quick-title">你可以这么问我</div>
+                <div className="qa-quick-grid">
+                  {rows.map((row, i) => (
+                    <div key={i} className="qa-quick-row">
+                      {row.map((q) => (
+                        <div key={q} className="qa-quick-btn" onClick={() => onAsk(q)}>{q}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
-      <h1 className="text-3xl font-black text-gray-800 tracking-tight" style={{ fontFamily: 'Georgia, serif' }}>
-        你好<span className="text-gold-deep">，</span>我是经管之星·AI问数助手
-      </h1>
-      {greeting.text && <p className="text-gray-500 mt-3 text-center max-w-lg">{greeting.text}</p>}
-      {!!greeting.questions.length && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8 w-full max-w-xl">
-          {greeting.questions.slice(0, 10).map((q) => (
-            <button key={q}
-              className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 text-left text-sm text-gray-600 hover:border-gold hover:shadow-md card-hover whitespace-nowrap"
-              onClick={() => onAsk(q)}>
-              {q}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

@@ -12,6 +12,8 @@ export interface Step {
   title: string
   desc: string
   done: boolean
+  /** 流式加载态：true=该步执行中 */
+  running?: boolean
 }
 
 export interface Chart {
@@ -51,14 +53,20 @@ export interface SessionItem {
   pinned: boolean
   userName: string
   msgCount: number
+  userFeedback: string
+  adminFeedback: string
   updatedAt: string
+  createdAt: string
 }
 
 export interface MsgItem {
   id: string
   role: 'user' | 'ai'
   content: string
-  aiMeta?: QaAskResp
+  /** 流式过程中为 Partial（逐块填充），done 事件后为完整 QaAskResp */
+  aiMeta?: Partial<QaAskResp>
+  /** 流式加载中（true 时卡片按块占位渲染） */
+  streaming?: boolean
   createdAt?: string
 }
 
@@ -76,7 +84,7 @@ export interface DataSourceGroup {
 }
 
 export interface AppConfig {
-  greeting: { text: string; questions: string[] }
+  greeting: { enabled: boolean; text: string; questions: string[] }
   suggestions: boolean
   tts: boolean
   stt: boolean

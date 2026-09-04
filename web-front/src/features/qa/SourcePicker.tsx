@@ -1,7 +1,6 @@
-/** 数据源选择弹窗：分组勾选 + 导入/模板入口 */
+/** 数据源选择弹窗（原型 qaFilePickerModal 1:1）：全选/取消全选 + 分组勾选 + 确定 */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Download, FileUp, History } from 'lucide-react'
 import { qaApi } from '../../api/modules/qa'
 import { importApi } from '../../api/modules/importApi'
 import type { DataSourceGroup } from '../../types'
@@ -29,7 +28,6 @@ export default function SourcePicker({ open, selected, onChange, onClose }: Prop
   }, [open, showSnackbar])
 
   const allKeys = useMemo(() => groups.flatMap((g) => g.items.map((i) => i.key)), [groups])
-  const allSelected = allKeys.length > 0 && allKeys.every((k) => selected.includes(k))
 
   const toggle = useCallback((key: string) => {
     onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key])
@@ -48,27 +46,31 @@ export default function SourcePicker({ open, selected, onChange, onClose }: Prop
 
   return (
     <>
-      <Modal open={open} onClose={onClose} boxClassName="max-w-2xl" showClose
-        title={<h3 className="font-bold text-lg">数据源选择</h3>} headerClassName="mb-4"
-        footerClassName="justify-between"
+      <Modal open={open} onClose={onClose} boxClassName="max-w-[420px]" showClose
+        title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-paperclip mr-2" />选择数据源</h3>}
+        headerClassName="mb-2"
         footer={<>
-          <div className="flex gap-2">
-            <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
-              <FileUp size={15} /> 导入
-            </button>
-            <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={downloadTemplate}>
-              <Download size={15} /> 下载模板
-            </button>
-            <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
-              <History size={15} /> 导入记录
-            </button>
-          </div>
-          <button className="btn btn-primary whitespace-nowrap" onClick={onClose}>完成</button>
-        </>}>
-        <div className="text-xs text-gray-400 mb-3">
-          {allSelected ? '已选择所有数据源' : `已选 ${selected.length} 个数据源`}
+          <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
+            <i className="fas fa-upload" /> 导入
+          </button>
+          <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={downloadTemplate}>
+            <i className="fas fa-download" /> 下载模板
+          </button>
+          <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
+            <i className="fas fa-history" /> 导入记录
+          </button>
+          <button className="btn btn-primary whitespace-nowrap" onClick={onClose}>确定</button>
+        </>}
+        footerClassName="justify-between">
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <button className="btn btn-text btn-xs whitespace-nowrap" style={{ fontSize: 14 }}
+            onClick={() => onChange(allKeys)}>全选</button>
+          <button className="btn btn-text btn-xs whitespace-nowrap" style={{ fontSize: 14 }}
+            onClick={() => onChange([])}>取消全选</button>
         </div>
-        <SourceGroupList groups={groups} selected={selected} onToggle={toggle} />
+        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          <SourceGroupList groups={groups} selected={selected} onToggle={toggle} />
+        </div>
       </Modal>
       <ImportDialog open={importOpen} onClose={closeImport} />
     </>

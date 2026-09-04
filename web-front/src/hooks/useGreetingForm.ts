@@ -35,8 +35,8 @@ export function useGreetingForm(save: SaveConfigFn) {
   }, [])
 
   const saveGreeting = useCallback(() => {
-    save({ greeting: { text: greetingText, questions: questions.slice(0, MAX_QUESTIONS) } })
-  }, [greetingText, questions, save])
+    save({ greeting: { enabled: greeting.enabled, text: greetingText, questions: questions.slice(0, MAX_QUESTIONS) } })
+  }, [greeting, greetingText, questions, save])
 
   return {
     greetingText, changeGreetingText,

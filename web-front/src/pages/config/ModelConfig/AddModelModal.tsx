@@ -1,10 +1,18 @@
-/** 新增模型弹窗：表单 + 连接测试（表单状态机在 useModelForm） */
+/** 新增模型弹窗（原型 mcAddModelModal 1:1：Base URL/API Key/Model Name + 测试连接 + 取消/添加；平台选择为后端必需字段） */
 
 import { useCallback } from 'react'
-import { FlaskConical } from 'lucide-react'
 import Modal from '../../../components/Modal'
 import { LLM_PLATFORMS } from '../../../api/modules/models'
 import { useModelForm } from '../../../hooks/useModelForm'
+
+const FIELD_STYLE: React.CSSProperties = {
+  width: '100%', height: 40, padding: '0 12px', border: '1px solid var(--border)', borderRadius: 6,
+  fontSize: 15, outline: 'none', background: 'var(--bg-muted)', color: 'var(--text-body)', boxSizing: 'border-box',
+}
+
+const LABEL_STYLE: React.CSSProperties = {
+  display: 'block', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4,
+}
 
 interface Props {
   open: boolean
@@ -17,52 +25,51 @@ export default function AddModelModal({ open, onClose }: Props) {
     changePlatform, changeBaseUrl, changeApiKey, changeModelName,
     runTest, submitAdd, resetAdd,
   } = useModelForm()
-  const preset = LLM_PLATFORMS.find((p) => p.value === platform)
 
   const handleClose = useCallback(() => {
     resetAdd()
     onClose()
   }, [resetAdd, onClose])
 
+  const required = <span style={{ color: 'var(--danger)' }}> *</span>
+
   return (
-    <Modal open={open} onClose={handleClose}
-      title={<h3 className="font-bold text-lg">新增模型</h3>} headerClassName="mb-4">
-      <div className="space-y-3">
-        <div>
-          <label className="text-sm font-bold text-gray-600 mb-1 block">平台</label>
-          <select className="select select-bordered w-full" value={platform}
-            onChange={(e) => changePlatform(e.target.value)}>
-            {LLM_PLATFORMS.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-sm font-bold text-gray-600 mb-1 block">Base URL（留空使用平台默认）</label>
-          <input className="input input-bordered w-full" placeholder={preset?.baseUrl}
-            value={baseUrl} onChange={(e) => changeBaseUrl(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-sm font-bold text-gray-600 mb-1 block">API Key</label>
-          <input type="password" className="input input-bordered w-full" placeholder="sk-..."
-            value={apiKey} onChange={(e) => changeApiKey(e.target.value)} />
-        </div>
-        <div>
-          <label className="text-sm font-bold text-gray-600 mb-1 block">模型名称</label>
-          <input className="input input-bordered w-full" placeholder="deepseek-chat"
-            value={modelName} onChange={(e) => changeModelName(e.target.value)} />
-        </div>
-      </div>
-      <div className="flex items-center gap-2 mt-4">
+    <Modal open={open} onClose={handleClose} boxClassName="max-w-[480px]" showClose
+      title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-plus-circle mr-1.5" style={{ color: 'var(--primary)' }} />新增模型</h3>}
+      footerClassName="justify-between"
+      footer={<>
         <button className="btn btn-outline btn-sm whitespace-nowrap gap-1" disabled={!canTest || testing} onClick={runTest}>
-          {testing ? <span className="loading loading-spinner loading-xs" /> : <FlaskConical size={15} />} 测试连接
+          {testing ? <span className="loading loading-spinner loading-xs" /> : <i className="fas fa-plug" />} 测试连接
         </button>
-        {testOk && <span className="badge badge-success badge-sm">连接成功</span>}
-        <div className="ml-auto flex gap-2">
-          <button className="btn btn-ghost btn-sm whitespace-nowrap" onClick={handleClose}>取消</button>
-          <button className="btn btn-primary btn-sm whitespace-nowrap" disabled={!testOk} onClick={submitAdd}>添加</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-text whitespace-nowrap" onClick={handleClose}>取消</button>
+          <button className="btn btn-primary whitespace-nowrap" disabled={!testOk || !baseUrl || !apiKey || !modelName} onClick={submitAdd}>添加</button>
         </div>
+      </>}>
+      <div style={{ marginBottom: 14 }}>
+        <label style={LABEL_STYLE}>平台{required}</label>
+        <select style={FIELD_STYLE} value={platform} onChange={(e) => changePlatform(e.target.value)}>
+          {LLM_PLATFORMS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
       </div>
+      <div style={{ marginBottom: 14 }}>
+        <label style={LABEL_STYLE}>Base URL{required}</label>
+        <input type="text" style={FIELD_STYLE} placeholder="https://api.openai.com/v1"
+          value={baseUrl} onChange={(e) => changeBaseUrl(e.target.value)} />
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label style={LABEL_STYLE}>API Key{required}</label>
+        <input type="password" style={FIELD_STYLE} placeholder="sk-..."
+          value={apiKey} onChange={(e) => changeApiKey(e.target.value)} />
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        <label style={LABEL_STYLE}>Model Name{required}</label>
+        <input type="text" style={FIELD_STYLE} placeholder="gpt-4o"
+          value={modelName} onChange={(e) => changeModelName(e.target.value)} />
+      </div>
+      {testOk && <div style={{ fontSize: 15, color: '#16A34A', minHeight: 20, marginTop: 4 }}>连接成功，可添加</div>}
     </Modal>
   )
 }

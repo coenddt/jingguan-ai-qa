@@ -1,7 +1,6 @@
-/** 用户消息气泡：编辑 / 重新发送 / 收藏 / 复制 */
+/** 用户消息气泡（原型 qa-user-msg）：编辑 / 重新发送 / 收藏 / 复制 */
 
 import { useCallback, useState } from 'react'
-import { Check, Copy, Pencil, RefreshCcw, Star } from 'lucide-react'
 import { useSnackbar } from '../../hooks/useSnackbar'
 import { readFavorites, writeFavorites } from '../../services/favorites'
 import { copyToClipboard } from '../../services/clipboard'
@@ -32,7 +31,7 @@ export default function ChatMessage({ content, onResend }: Props) {
     const next = faved ? favs.filter((f) => f !== content) : [...favs, content]
     writeFavorites(next)
     setFaved(!faved)
-    showSnackbar(faved ? '已取消收藏' : '已收藏', 'success')
+    showSnackbar(faved ? '已取消收藏' : '问题已收藏', 'success')
   }, [content, faved, showSnackbar])
 
   const startEdit = useCallback(() => setEditing(true), [])
@@ -48,22 +47,20 @@ export default function ChatMessage({ content, onResend }: Props) {
   }
 
   return (
-    <div className="flex flex-col items-end group">
-      <div className="bg-primary text-white rounded-2xl rounded-br-md px-4 py-2.5 max-w-[70%] text-sm leading-relaxed break-words">
-        {content}
-      </div>
-      <div className="flex gap-0.5 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button className="btn btn-ghost btn-xs btn-square text-gray-400" title="收藏" onClick={toggleFav}>
-          <Star size={13} className={faved ? 'fill-gold text-gold' : ''} />
+    <div className="qa-user-msg">
+      <div className="qa-user-bubble">{content}</div>
+      <div className="qa-user-actions">
+        <button data-title="收藏" onClick={toggleFav}>
+          <i className="fas fa-star" style={faved ? { color: '#F59E0B' } : undefined} />
         </button>
-        <button className="btn btn-ghost btn-xs btn-square text-gray-400" title="编辑" onClick={startEdit}>
-          <Pencil size={13} />
+        <button data-title="编辑" onClick={startEdit}>
+          <i className="fas fa-pen" />
         </button>
-        <button className="btn btn-ghost btn-xs btn-square text-gray-400" title="重新发送" onClick={resend}>
-          <RefreshCcw size={13} />
+        <button data-title="重新发送" onClick={resend}>
+          <i className="fas fa-sync-alt" />
         </button>
-        <button className="btn btn-ghost btn-xs btn-square text-gray-400" title="复制" onClick={handleCopy}>
-          {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
+        <button data-title="复制" onClick={handleCopy}>
+          <i className={copied ? 'fas fa-check' : 'fas fa-copy'} style={copied ? { color: '#16A34A' } : undefined} />
         </button>
       </div>
     </div>

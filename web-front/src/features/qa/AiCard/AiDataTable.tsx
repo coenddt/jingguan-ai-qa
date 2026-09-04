@@ -1,4 +1,4 @@
-/** ③ 数据表格（含截断提示） */
+/** ③ 数据表格（原型 qa-ai-table） */
 
 interface Props {
   columns: string[]
@@ -10,20 +10,20 @@ export default function AiDataTable({ columns, rows, totalCount }: Props) {
   if (!rows.length) return null
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-gray-200">
-        <table className="table table-sm" style={{ minWidth: 750 }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="qa-ai-table">
           <thead>
-            <tr>{columns.map((c) => <th key={c} className="whitespace-nowrap">{c}</th>)}</tr>
+            <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i}>{row.map((cell, j) => <td key={j} className="whitespace-nowrap">{String(cell)}</td>)}</tr>
+              <tr key={i}>{row.map((cell, j) => <td key={j}>{String(cell)}</td>)}</tr>
             ))}
           </tbody>
         </table>
       </div>
       {rows.length >= 200 && (
-        <div className="text-xs text-warning">共 {totalCount} 条已截断（上限 200 条）</div>
+        <div style={{ fontSize: 12, color: '#D97706', marginTop: 4 }}>共 {totalCount} 条已截断（上限 200 条）</div>
       )}
     </>
   )

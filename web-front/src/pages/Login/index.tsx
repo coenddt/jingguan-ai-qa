@@ -1,19 +1,27 @@
-/** 登录页：品牌区 + 登录表单 */
+/** 登录页（原型 login-page 1:1）：左蓝渐变品牌区（网格/粒子/光线动效）+ 右登录表单 */
 
-import { Sparkles } from 'lucide-react'
 import LoginForm from './LoginForm'
 
 export default function Login() {
   return (
-    <div className="min-h-screen bg-[#0f172a] dot-grid flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl gold-gradient flex items-center justify-center text-[#0f172a] mb-4">
-            <Sparkles size={28} strokeWidth={1.5} />
-          </div>
-          <h1 className="text-3xl font-black text-white tracking-tight">经管之星·AI问数助手</h1>
-          <p className="text-white/50 text-sm mt-2">自然语言进，text-to-query 出，结果直观可见</p>
-        </div>
+    <div className="login-page">
+      <div className="login-left">
+        <div className="bg-grid" />
+        <div className="bg-particle" />
+        <div className="bg-particle" />
+        <div className="bg-particle" />
+        <div className="bg-particle" />
+        <div className="bg-particle" />
+        <div className="bg-line" />
+        <div className="bg-line" />
+        <div className="bg-line" />
+        <div className="logo-icon"><i className="fas fa-chart-line" /></div>
+        <h1>经管之星·AI问数助手</h1>
+        <p>自然语言进，text-to-query 出，结果直观可见</p>
+      </div>
+      <div className="login-right">
+        <h2>欢迎回来</h2>
+        <p className="sub">请登录您的账号</p>
         <LoginForm />
       </div>
     </div>

@@ -1,32 +1,34 @@
-/** ① 分析过程（可折叠步骤列表） */
+/** ① 分析过程（原型 aa-summary-bar + aa-inline-steps） */
 
-import { Check } from 'lucide-react'
-import type { ChangeEvent } from 'react'
 import type { Step } from '../../../types'
 
 interface Props {
   open: boolean
-  onChange: (e: ChangeEvent<HTMLInputElement>) => void
+  onToggle: () => void
   steps: Step[]
 }
 
-export default function AiSteps({ open, onChange, steps }: Props) {
+export default function AiSteps({ open, onToggle, steps }: Props) {
   return (
-    <div className="collapse collapse-arrow bg-base-100 border border-gray-200 rounded-xl">
-      <input type="checkbox" checked={open} onChange={onChange} />
-      <div className="collapse-title text-sm font-bold text-gray-600 pr-2">分析过程</div>
-      <div className="collapse-content">
-        <ul className="space-y-2">
-          {steps.map((s, i) => (
-            <li key={i} className="flex gap-2 text-sm">
-              {s.done && <Check size={16} className="text-success shrink-0 mt-0.5" />}
-              <div>
-                <span className="font-bold text-gray-700">{s.title}</span>
-                {s.desc && <div className="text-gray-500 break-all">{s.desc}</div>}
-              </div>
-            </li>
-          ))}
-        </ul>
+    <div className="aa-wrap">
+      <div className="aa-summary-bar" onClick={onToggle}>
+        <i className="fas fa-microchip" /> 分析过程 <span className="arr">{open ? '▾' : '▸'}</span>
+        <span style={{ marginLeft: 'auto', color: '#6B7280', fontSize: 13 }}>{open ? '点击收起' : '点击展开'}</span>
+      </div>
+      <div className={`aa-inline-steps ${open ? 'show' : ''}`}>
+        {steps.map((s, i) => (
+          <div key={i} className={`aa-step ${s.done ? 'done' : s.running ? 'running' : 'active'}`}>
+            <div className="aa-step-icon">
+              {s.done ? <i className="fas fa-check" /> : s.running ? <i className="fas fa-circle-notch fa-spin" /> : null}
+            </div>
+            <div className="aa-step-body">
+              <div className="aa-step-title">{s.title}</div>
+              {!!s.desc && (
+                <div className={`aa-step-desc ${s.title.includes('SQL') || s.desc.includes('SELECT') ? 'code' : ''}`}>{s.desc}</div>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

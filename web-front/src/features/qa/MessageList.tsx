@@ -1,4 +1,4 @@
-/** 聊天消息区：用户消息 / AI 卡片 / AI 纯文本气泡 + 发送中指示 + 自动滚底 */
+/** 聊天消息区（原型 chatMessages）：用户消息 / AI 卡片 / AI 纯文本气泡 + 发送中指示 + 自动滚底 */
 
 import { useEffect, useRef } from 'react'
 import type { MsgItem } from '../../types'
@@ -19,21 +19,19 @@ export default function MessageList({ messages, sending, onResend }: Props) {
   }, [messages, sending])
 
   return (
-    <div className="max-w-[900px] mx-auto space-y-5">
+    <div className="max-w-[900px] mx-auto space-y-5 pb-2">
       {messages.map((m, i) => m.role === 'user' ? (
         <ChatMessage key={m.id} content={m.content} onResend={onResend} />
       ) : m.aiMeta ? (
-        <AiCard key={m.id} resp={m.aiMeta} question={messages[i - 1]?.content || ''} />
+        <AiCard key={m.id} resp={m.aiMeta} question={messages[i - 1]?.content || ''} streaming={m.streaming} />
       ) : (
-        <div key={m.id} className="bg-white rounded-2xl border border-gray-200 p-4 max-w-[860px]">
-          <p className="text-sm text-gray-600 whitespace-pre-wrap">{m.content}</p>
+        <div key={m.id} className="qa-ai-msg">
+          <div className="qa-ai-avatar"><i className="fas fa-robot" /></div>
+          <div className="qa-ai-card">
+            <p className="text-sm text-gray-600 whitespace-pre-wrap">{m.content}</p>
+          </div>
         </div>
       ))}
-      {sending && (
-        <div className="flex items-center gap-2 text-gray-400 text-sm">
-          <span className="loading loading-spinner loading-sm" /> 正在分析数据，请稍候...
-        </div>
-      )}
       <div ref={bottomRef} />
     </div>
   )

@@ -3,7 +3,7 @@ import { configApi } from '../api/modules/config'
 import type { AppConfig } from '../types'
 
 const DEFAULT_CONFIG: AppConfig = {
-  greeting: { text: '', questions: [] },
+  greeting: { enabled: true, text: '', questions: [] },
   suggestions: true,
   tts: false,
   stt: false,

@@ -1,10 +1,8 @@
-/** 快捷提问弹窗：常问 / 收藏 两个 Tab */
+/** 快捷提问面板（原型 qq-panel 1:1，锚定输入栏上方）：常问 / 收藏 */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Star, X, Zap } from 'lucide-react'
 import { qaApi } from '../../api/modules/qa'
 import { useSnackbar } from '../../hooks/useSnackbar'
-import Modal from '../../components/Modal'
 import { readFavorites, writeFavorites } from '../../services/favorites'
 
 interface Props {
@@ -15,20 +13,6 @@ interface Props {
 
 type Tab = 'hot' | 'fav'
 
-/** 收藏问题 chip：点击提问 + 移除 */
-function FavChip({ question, onAsk, onRemove }: { question: string; onAsk: (q: string) => void; onRemove: (q: string) => void }) {
-  return (
-    <div className="flex items-center bg-gray-50 border border-gray-200 rounded-full pl-1">
-      <button className="btn btn-ghost btn-xs rounded-full whitespace-nowrap text-gray-600" onClick={() => onAsk(question)}>
-        {question}
-      </button>
-      <button className="btn btn-ghost btn-xs btn-square text-gray-300" onClick={() => onRemove(question)}>
-        <X size={12} />
-      </button>
-    </div>
-  )
-}
-
 export default function QuickAsk({ open, onClose, onAsk }: Props) {
   const [tab, setTab] = useState<Tab>('hot')
   const [hot, setHot] = useState<{ question: string; hit: number }[]>([])
@@ -38,6 +22,7 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
 
   useEffect(() => {
     if (!open) return
+    setTab('hot')
     setFavs(readFavorites())
     qaApi.getQuickAsks()
       .then(({ data }) => {
@@ -48,43 +33,57 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
       .catch(() => showSnackbar('常问数据加载失败', 'error'))
   }, [open, showSnackbar])
 
-  const switchTab = useCallback((t: Tab) => setTab(t), [])
-
-  const askAndClose = useCallback((q: string) => {
-    onClose()
-    onAsk(q)
-  }, [onClose, onAsk])
+  // 点击面板外部关闭
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (!t.closest('.qq-panel') && !t.closest('.qq-btn')) onClose()
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open, onClose])
 
   const removeFav = useCallback((q: string) => {
     const next = favs.filter((f) => f !== q)
     writeFavorites(next)
     setFavs(next)
-  }, [favs])
+    showSnackbar('已取消收藏', 'success')
+  }, [favs, showSnackbar])
 
   if (!open) return null
 
+  const list = tab === 'hot' ? hot.map((h) => h.question) : favs
+
   return (
-    <Modal open={open} onClose={onClose} boxClassName="max-w-lg" showClose
-      title={<h3 className="font-bold text-lg flex items-center gap-1.5"><Zap size={18} className="text-gold-deep" /> 快捷提问</h3>}>
-      <div role="tablist" className="tabs tabs-bordered mt-2">
+    <div className="qq-panel show">
+      <div className="qq-phdr">
+        <h4><i className="fas fa-bolt" style={{ color: '#2563EB', marginRight: 4 }} />快捷提问</h4>
+        <button className="qq-close" onClick={onClose}><i className="fas fa-times" /></button>
+      </div>
+      <div className="qq-tabs">
         {hotEnabled && (
-          <button role="tab" className={`tab whitespace-nowrap gap-1 ${tab === 'hot' ? 'tab-active' : ''}`}
-            onClick={() => switchTab('hot')}><Zap size={13} /> 常问</button>
+          <button className={`qq-tab ${tab === 'hot' ? 'active' : ''}`} onClick={() => setTab('hot')}>常问</button>
         )}
-        <button role="tab" className={`tab whitespace-nowrap gap-1 ${tab === 'fav' ? 'tab-active' : ''}`}
-          onClick={() => switchTab('fav')}><Star size={13} /> 收藏</button>
+        <button className={`qq-tab ${tab === 'fav' ? 'active' : ''}`} onClick={() => setTab('fav')}>收藏</button>
       </div>
-      <div className="flex flex-wrap gap-2 mt-4 min-h-[80px] content-start">
-        {tab === 'hot' && hot.map((h) => (
-          <button key={h.question} className="btn btn-outline btn-sm rounded-full whitespace-nowrap text-gray-600"
-            onClick={() => askAndClose(h.question)}>
-            {h.question}
-          </button>
+      <div className="qq-list">
+        {list.length === 0 && (
+          <div className="qq-item" style={{ cursor: 'default', color: '#9CA3AF' }}>
+            {tab === 'fav' ? '暂无收藏问题，在消息上点 ☆ 收藏' : '暂无常问问题'}
+          </div>
+        )}
+        {list.map((q) => (
+          <div key={q} className="qq-item" onClick={() => onAsk(q)}>
+            <span>{q}</span>
+            {tab === 'fav' && (
+              <button className="qq-unfav" title="取消收藏" onClick={(e) => { e.stopPropagation(); removeFav(q) }}>
+                <i className="fas fa-times" />
+              </button>
+            )}
+          </div>
         ))}
-        {tab === 'fav' && (favs.length ? favs.map((q) => (
-          <FavChip key={q} question={q} onAsk={askAndClose} onRemove={removeFav} />
-        )) : <p className="text-sm text-gray-400 py-4">暂无收藏问题，在消息上点 ☆ 收藏</p>)}
       </div>
-    </Modal>
+    </div>
   )
 }

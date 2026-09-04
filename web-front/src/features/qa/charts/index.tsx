@@ -1,4 +1,4 @@
-/** AI 卡片图表块（option 构建逻辑在 services/chart） */
+/** AI 卡片图表块（option 构建逻辑在 services/chart；标题由外层 chart-desc 呈现） */
 
 import ReactECharts from 'echarts-for-react'
 import type { Chart } from '../../../types'
@@ -8,11 +8,7 @@ export default function ChartView({ chart }: { chart: Chart }) {
   const option = buildChartOption(chart)
 
   return (
-    <div>
-      <div className="flex items-baseline gap-2 mb-1">
-        <h4 className="font-bold text-gray-700">{chart.title}</h4>
-        {!!chart.unit && <span className="text-xs text-gray-400">单位：{chart.unit}</span>}
-      </div>
+    <div className="qa-chart-wrap" style={{ padding: 12, background: '#FAFBFC', borderRadius: 8 }}>
       <ReactECharts option={option} style={{ height: 320 }} notMerge />
     </div>
   )

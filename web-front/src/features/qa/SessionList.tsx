@@ -1,7 +1,6 @@
-/** 历史会话侧栏：列表 + 重命名弹窗 + 删除确认 */
+/** 历史会话侧栏（原型 qa-sidebar 1:1）：近30天记录 + 开启新对话 + 会话列表 + 右键菜单 */
 
-import { useCallback } from 'react'
-import { MessageSquarePlus, X } from 'lucide-react'
+import { useCallback, useEffect } from 'react'
 import type { SessionItem } from '../../types'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Modal from '../../components/Modal'
@@ -22,25 +21,70 @@ export default function SessionList({ open, activeId, onClose, onSelect, onNew }
   const handleActiveDeleted = useCallback(() => onSelect(''), [onSelect])
   const actions = useSessionActions(activeId, handleActiveDeleted)
 
+  // 点击菜单外部关闭上下文菜单
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (!t.closest('.qa-sb-ctx-menu') && !t.closest('.qa-sbi-menu')) {
+        document.getElementById('qaCtxMenu')?.classList.remove('show')
+      }
+    }
+    document.addEventListener('click', onDocClick)
+    return () => document.removeEventListener('click', onDocClick)
+  }, [open])
+
+  const ctxSession = useCallback((): SessionItem | undefined => {
+    const id = document.getElementById('qaCtxMenu')?.getAttribute('data-id') ?? ''
+    return sessions.find((s) => s.id === id)
+  }, [sessions])
+
+  const hideCtx = useCallback(() => document.getElementById('qaCtxMenu')?.classList.remove('show'), [])
+
+  const ctxPin = useCallback(() => {
+    const s = ctxSession()
+    hideCtx()
+    if (s) void actions.togglePin(s)
+  }, [ctxSession, hideCtx, actions])
+
+  const ctxRename = useCallback(() => {
+    const s = ctxSession()
+    hideCtx()
+    if (s) actions.openRename(s)
+  }, [ctxSession, hideCtx, actions])
+
+  const ctxDelete = useCallback(() => {
+    const s = ctxSession()
+    hideCtx()
+    if (s) actions.openDelete(s)
+  }, [ctxSession, hideCtx, actions])
+
   if (!open) return null
 
   return (
-    <aside className="w-[240px] shrink-0 h-full bg-white border-r border-gray-200 flex flex-col">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <span className="font-bold text-gray-700 text-sm">历史会话</span>
-        <button className="btn btn-ghost btn-xs btn-square" onClick={onClose}><X size={15} /></button>
+    <aside className="qa-sidebar" style={{ borderRadius: 0 }}>
+      <div className="qa-sb-top">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="qa-sb-collapse" title="收起侧栏" onClick={onClose}>
+            <i className="fas fa-chevron-left" />
+          </button>
+          <span className="qa-sb-title">近30天记录</span>
+        </div>
       </div>
-      <div className="px-3 py-2">
-        <button className="btn btn-primary btn-sm w-full whitespace-nowrap gap-1" onClick={onNew}>
-          <MessageSquarePlus size={15} /> 新建会话
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto px-2 pb-2 space-y-1">
+      <button className="qa-sb-newchat" onClick={onNew}><i className="fas fa-plus" /> 开启新对话</button>
+      <div className="qa-sb-list">
         {sessions.map((s) => (
-          <SessionItemRow key={s.id} session={s} active={s.id === activeId} menuOpen={actions.menuFor === s.id}
-            onSelect={onSelect} onToggleMenu={actions.toggleMenu} onTogglePin={actions.togglePin}
+          <SessionItemRow key={s.id} session={s} active={s.id === activeId}
+            onSelect={onSelect}
             onRename={actions.openRename} onDelete={actions.openDelete} />
         ))}
+      </div>
+
+      {/* 会话上下文菜单（原型 qaCtxMenu） */}
+      <div className="qa-sb-ctx-menu" id="qaCtxMenu">
+        <button className="ctx-item" id="qaCtxPin" onClick={ctxPin}><i className="fas fa-thumbtack" /> 置顶</button>
+        <button className="ctx-item" onClick={ctxRename}><i className="fas fa-edit" /> 重命名</button>
+        <button className="ctx-item ctx-danger" onClick={ctxDelete}><i className="fas fa-trash" /> 删除</button>
       </div>
 
       <Modal open={!!actions.renameFor} onClose={actions.closeRename}

@@ -1,66 +1,79 @@
-/** 模型配置页：模型列表 + 新增弹窗 + 删除确认 */
+/** 模型配置页（原型 page-sys-model 1:1）：应用模型设置卡片 + 模型选择 + 新增模型弹窗 */
 
-import { useCallback, useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
-import PageHeader from '../../../components/PageHeader'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Breadcrumb from '../../../components/Breadcrumb'
 import { modelsApi } from '../../../api/modules/models'
 import { useModelStore } from '../../../store/useModelStore'
-import ConfirmDialog from '../../../components/ConfirmDialog'
 import { useSnackbar } from '../../../hooks/useSnackbar'
-import type { ModelItem } from '../../../types'
-import ModelList from './ModelList'
 import AddModelModal from './AddModelModal'
 
 export default function ModelConfig() {
   const models = useModelStore((s) => s.items)
   const fetchMethod = useModelStore((s) => s.fetchMethod)
-  const [addOpen, setAddOpen] = useState(false)
-  const [delFor, setDelFor] = useState<ModelItem | null>(null)
-  const [delLoading, setDelLoading] = useState(false)
   const { showSnackbar } = useSnackbar()
+  const [addOpen, setAddOpen] = useState(false)
+  const [selected, setSelected] = useState('')
 
   useEffect(() => {
     fetchMethod().catch(() => showSnackbar('模型列表加载失败', 'error'))
   }, [fetchMethod, showSnackbar])
 
-  const openAdd = useCallback(() => setAddOpen(true), [])
-  const closeAdd = useCallback(() => setAddOpen(false), [])
+  // 默认选中当前启用模型
+  useEffect(() => {
+    setSelected((prev) => prev || models.find((m) => m.enabled)?.id || '')
+  }, [models])
 
-  const enable = useCallback((m: ModelItem) => {
-    modelsApi.enable(m.id, true)
+  const changeSelect = useCallback((v: string) => {
+    if (v === '__add__') {
+      setAddOpen(true)
+      return
+    }
+    setSelected(v)
+  }, [])
+
+  const saveConfig = useCallback(() => {
+    if (!selected) {
+      showSnackbar('请先选择模型', 'error')
+      return
+    }
+    const name = models.find((m) => m.id === selected)?.name || ''
+    modelsApi.enable(selected, true)
       .then(() => fetchMethod())
-      .then(() => showSnackbar(`已启用「${m.name}」`, 'success'))
-      .catch(() => showSnackbar('启用失败，请重试', 'error'))
-  }, [fetchMethod, showSnackbar])
-
-  const openDelete = useCallback((m: ModelItem) => setDelFor(m), [])
-  const closeDelete = useCallback(() => setDelFor(null), [])
-
-  const submitDelete = useCallback(() => {
-    if (!delFor) return
-    setDelLoading(true)
-    modelsApi.remove(delFor.id)
-      .then(() => {
-        showSnackbar('模型已删除', 'success')
-        setDelFor(null)
-        return fetchMethod()
-      })
-      .catch(() => showSnackbar('删除失败，请重试', 'error'))
-      .finally(() => setDelLoading(false))
-  }, [delFor, fetchMethod, showSnackbar])
+      .then(() => showSnackbar(`配置已保存，智能问数将使用「${name}」`, 'success'))
+      .catch(() => showSnackbar('保存失败，请重试', 'error'))
+  }, [selected, models, fetchMethod, showSnackbar])
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <PageHeader title="模型配置" subtitle="OpenAI 兼容模型管理；支持 DeepSeek / 火山引擎方舟"
-        actions={[{ label: '新增模型', icon: <Plus size={16} />, onClick: openAdd }]} />
+      <Breadcrumb />
+      <div className="pg-card">
+        <div className="model-config">
+          <div className="mc-title"><i className="fas fa-cube" />应用模型设置</div>
+          <div className="mc-subtitle">选择AI问答使用的LLM模型</div>
 
-      <ModelList models={models} onEnable={enable} onDelete={openDelete} />
+          <div className="mc-card">
+            <div className="mc-card-hdr">
+              <span className="mc-card-title"><i className="fas fa-robot" />智能问数模型</span>
+              <select value={selected} onChange={(e) => changeSelect(e.target.value)}>
+                <option value="">-- 选择模型 --</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+                <option value="__add__" style={{ color: 'var(--primary)', fontWeight: 600 }}>── 新增模型 ──</option>
+              </select>
+            </div>
+            <div className="mc-card-body">用于智能问数、经营指标问答、台账数据分析</div>
+          </div>
 
-      <AddModelModal open={addOpen} onClose={closeAdd} />
+          <div className="mc-actions">
+            <button className="btn btn-outline btn-sm whitespace-nowrap gap-1" onClick={saveConfig}>
+              <i className="fas fa-save" /> 保存配置
+            </button>
+          </div>
+        </div>
+      </div>
 
-      <ConfirmDialog open={!!delFor} title="删除模型" loading={delLoading}
-        content={`确定删除模型「${delFor?.name ?? ''}」吗？`}
-        onClose={closeDelete} onConfirm={submitDelete} />
+      <AddModelModal open={addOpen} onClose={() => setAddOpen(false)} />
     </div>
   )
 }

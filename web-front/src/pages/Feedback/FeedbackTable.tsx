@@ -1,8 +1,7 @@
-/** 反馈列表表格块（Feedback 页使用） */
+/** 反馈列表表格块（原型 tableFeedback 1:1：序号/用户/问题/反馈时间/状态/操作，操作列 sticky 右侧「处理」） */
 
 import type { FeedbackItem } from '../../types'
 import CustomTablePagination from '../../components/CustomTablePagination'
-import EmptyTableRow from '../../components/EmptyTableRow'
 import TableSkeleton from '../../components/TableSkeleton'
 import { formatDateTime } from '../../utils/date'
 
@@ -14,45 +13,48 @@ interface Props {
   rowsPerPage: number
   onPageChange: (page: number) => void
   onRowsPerPageChange: (n: number) => void
-  onView: (f: FeedbackItem) => void
+  onHandle: (f: FeedbackItem) => void
 }
 
-export default function FeedbackTable({ items, loading, total, page, rowsPerPage, onPageChange, onRowsPerPageChange, onView }: Props) {
+export default function FeedbackTable({ items, loading, total, page, rowsPerPage, onPageChange, onRowsPerPageChange, onHandle }: Props) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 mt-4 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="table" style={{ minWidth: 850 }}>
+    <>
+      <div className="pg-table-wrap">
+        <table className="pg-data-table">
           <thead>
             <tr>
-              <th className="w-[160px]">时间</th>
-              <th className="w-[110px]">用户</th>
-              <th className="min-w-[140px] max-w-[280px]">问题</th>
-              <th className="w-[90px]">状态</th>
-              <th className="w-[100px]">操作</th>
+              <th style={{ width: 40 }}>序号</th>
+              <th style={{ width: 100 }}>用户</th>
+              <th style={{ width: '30%' }}>问题</th>
+              <th style={{ width: 160 }}>反馈时间</th>
+              <th style={{ width: 80 }}>状态</th>
+              <th style={{ width: 100, position: 'sticky', right: 0, background: '#F8FAFC', boxShadow: '-2px 0 4px rgba(0,0,0,.04)' }}>操作</th>
             </tr>
           </thead>
           <tbody>
-            {loading ? <TableSkeleton columns={5} /> :
-              items.length ? items.map((f) => (
+            {loading ? <TableSkeleton columns={6} /> :
+              items.length ? items.map((f, i) => (
                 <tr key={f.id}>
-                  <td className="text-xs text-gray-400 whitespace-nowrap">{formatDateTime(f.createdAt)}</td>
+                  <td style={{ textAlign: 'center' }}>{page * rowsPerPage + i + 1}</td>
                   <td className="whitespace-nowrap">{f.userName}</td>
-                  <td className="min-w-[140px] max-w-[280px] whitespace-normal break-words">{f.question}</td>
+                  <td className="whitespace-normal break-words">{f.question}</td>
+                  <td className="whitespace-nowrap">{formatDateTime(f.createdAt)}</td>
                   <td>
-                    <span className={`badge badge-sm whitespace-nowrap ${f.status === '已处理' ? 'badge-success' : 'badge-warning'}`}>
-                      {f.status}
-                    </span>
+                    <span className={`tag whitespace-nowrap ${f.status === '已处理' ? 'tag-green' : 'tag-orange'}`}>{f.status}</span>
                   </td>
-                  <td>
-                    <button className="btn btn-outline btn-xs whitespace-nowrap" onClick={() => onView(f)}>查看</button>
+                  <td style={{ position: 'sticky', right: 0, background: '#fff' }}>
+                    <button className="btn btn-text btn-xs whitespace-nowrap" onClick={() => onHandle(f)}>处理</button>
                   </td>
                 </tr>
-              )) : <EmptyTableRow colSpan={5} message="暂无反馈记录" />}
+              )) : (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 14, padding: 40 }}>暂无反馈数据</td></tr>
+              )}
           </tbody>
         </table>
       </div>
       <CustomTablePagination total={total} page={page} rowsPerPage={rowsPerPage}
         onPageChange={onPageChange} onRowsPerPageChange={onRowsPerPageChange} />
-    </div>
+    </>
   )
 }
+

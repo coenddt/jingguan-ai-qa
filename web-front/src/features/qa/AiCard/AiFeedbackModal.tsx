@@ -1,9 +1,12 @@
-/** 回复校对反馈弹窗（AiCard 使用） */
+/** AI 回复反馈弹窗（原型 optimizeModal 1:1 还原） */
 
-import { useCallback, useState, type ChangeEvent } from 'react'
+import { useCallback } from 'react'
 import Modal from '../../../components/Modal'
 import { feedbackApi } from '../../../api/modules/feedback'
 import { useSnackbar } from '../../../hooks/useSnackbar'
+
+/** 原型提交文案：数据有误，实际数据与AI回复不一致 */
+const FEEDBACK_DESC = '数据有误，实际数据与AI回复不一致'
 
 interface Props {
   open: boolean
@@ -14,34 +17,29 @@ interface Props {
 }
 
 export default function AiFeedbackModal({ open, sessionId, question, answer, onClose }: Props) {
-  const [text, setText] = useState('')
   const { showSnackbar } = useSnackbar()
 
-  const changeText = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => setText(e.target.value), [])
-
   const close = useCallback(() => {
-    setText('')
     onClose()
   }, [onClose])
 
   const submit = useCallback(() => {
-    feedbackApi.create({ sessionId, question, answer, description: text })
+    feedbackApi.create({ sessionId, question, answer, description: FEEDBACK_DESC })
       .then(() => {
-        showSnackbar('反馈已提交，感谢校对', 'success')
+        showSnackbar('您的数据问题反馈已提交，我们将尽快核查，感谢反馈', 'success')
         close()
       })
       .catch(() => showSnackbar('反馈提交失败，请稍后重试', 'error'))
-  }, [sessionId, question, answer, text, showSnackbar, close])
+  }, [sessionId, question, answer, showSnackbar, close])
 
   return (
-    <Modal open={open} onClose={close}
-      title={<h3 className="font-bold text-lg">回复校对</h3>} headerClassName="mb-3"
-      footer={<>
-        <button className="btn btn-ghost whitespace-nowrap" onClick={close}>取消</button>
-        <button className="btn btn-primary whitespace-nowrap" disabled={!text.trim()} onClick={submit}>提交</button>
-      </>}>
-      <textarea className="textarea textarea-bordered w-full h-24" placeholder="描述问题（如数据不符/图表有误）"
-        value={text} onChange={changeText} />
+    <Modal open={open} onClose={close} boxClassName="max-w-[480px]"
+      title={<h3 className="font-bold text-lg flex items-center"><i className="fas fa-frown mr-1.5" style={{ color: '#2563EB' }} />AI回复反馈</h3>}
+      showClose>
+      <div style={{ fontSize: 15, color: '#374151', marginBottom: 14, lineHeight: 1.6 }}>请问你是对哪里不满意呢？</div>
+      <button className="btn btn-outline w-full whitespace-nowrap" style={{ height: 44, fontSize: 15 }} onClick={submit}>
+        <i className="fas fa-exclamation-triangle mr-1" /> 数据有误，提交反馈
+      </button>
     </Modal>
   )
 }

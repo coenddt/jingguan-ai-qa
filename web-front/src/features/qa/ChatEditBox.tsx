@@ -1,7 +1,6 @@
-/** 消息编辑态气泡（ChatMessage 编辑模式渲染） */
+/** 消息编辑态（原型 qa-edit-bar）：取消 / 重新发送 */
 
 import { useCallback, useState, type ChangeEvent } from 'react'
-import { X } from 'lucide-react'
 
 interface Props {
   content: string
@@ -19,18 +18,22 @@ export default function ChatEditBox({ content, onCancel, onSend }: Props) {
   }, [draft, onSend])
 
   return (
-    <div className="flex justify-end">
-      <div className="bg-white border border-gray-200 rounded-2xl p-3 max-w-[70%] space-y-2">
-        <textarea className="textarea textarea-bordered w-full h-24 text-sm" value={draft}
-          onChange={changeDraft} autoFocus />
-        <div className="flex gap-2 justify-end">
-          <button className="btn btn-ghost btn-xs whitespace-nowrap" onClick={onCancel}>
-            <X size={13} /> 取消
-          </button>
-          <button className="btn btn-primary btn-xs whitespace-nowrap" disabled={!draft.trim()} onClick={send}>
-            重新发送
-          </button>
-        </div>
+    <div className="qa-user-msg">
+      <div className="qa-user-bubble" style={{ padding: 0 }}>
+        <textarea autoFocus value={draft} onChange={changeDraft}
+          style={{
+            width: '100%', border: 'none', background: 'transparent', resize: 'none', outline: 'none',
+            fontSize: 16, color: '#1E1B4B', lineHeight: 1.5, fontFamily: 'inherit',
+            minHeight: 40, display: 'block', padding: '12px 16px', boxSizing: 'border-box',
+          }} />
+      </div>
+      <div className="qa-edit-bar">
+        <button className="btn btn-text btn-sm whitespace-nowrap" onClick={onCancel}>
+          <i className="fas fa-times" /> 取消
+        </button>
+        <button className="btn btn-primary btn-sm whitespace-nowrap" disabled={!draft.trim()} onClick={send}>
+          <i className="fas fa-paper-plane" /> 重新发送
+        </button>
       </div>
     </div>
   )

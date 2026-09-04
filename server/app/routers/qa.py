@@ -1,8 +1,10 @@
 """问数域路由：会话/消息/提问/日志/数据源/常问"""
 
+import json
 import time
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config import APP_CONFIG_DEFAULTS, QA_HOT_LIMIT, QA_PRESET_HOT, QA_SOURCES, QA_TITLE_MAX
@@ -37,13 +39,25 @@ async def get_sources():
 @router.get('/sessions')
 async def list_sessions():
     items = await store.query(
-        'QaSession($sort:@s0,$limit:@l) { _id, title, pinned, userName, msgCount, updatedAt }',
+        'QaSession($sort:@s0,$limit:@l) { _id, title, pinned, userName, msgCount, createdAt, updatedAt }',
         {'s0': {'updatedAt': -1}, 'l': 100},
     )
     items.sort(key=lambda x: (not x.get('pinned'), -x.get('updatedAt', 0)))
+    # 聚合各会话反馈：userFeedback=是否已反馈，adminFeedback=处理状态
+    ids = [s['_id'] for s in items]
+    fb: dict = {}
+    if ids:
+        fbs = await store.query(
+            'Feedback($condition:@c0,$sort:@s1) { sessionId, status }',
+            {'c0': {'sessionId': {'$in': ids}}, 's1': {'createdAt': -1}},
+        )
+        for f in fbs:
+            fb.setdefault(f.get('sessionId', ''), f)
     return [{'id': s['_id'], 'title': s.get('title', ''), 'pinned': s.get('pinned', False),
              'userName': s.get('userName', ''), 'msgCount': s.get('msgCount', 0),
-             'updatedAt': s.get('updatedAt')} for s in items]
+             'userFeedback': '已反馈' if s['_id'] in fb else '',
+             'adminFeedback': fb.get(s['_id'], {}).get('status', ''),
+             'updatedAt': s.get('updatedAt'), 'createdAt': s.get('createdAt')} for s in items]
 
 
 @router.post('/sessions')
@@ -84,7 +98,14 @@ async def list_messages(sid: str):
 
 @router.post('/ask')
 async def ask(body: AskIn):
-    return await qa_service.ask(body.question, body.session_id, body.source_keys)
+    """流式问数（SSE）：分析步骤/结果块逐个推送，前端逐块渲染"""
+
+    async def gen():
+        async for ev in qa_service.ask_stream(body.question, body.session_id, body.source_keys):
+            yield f'data: {json.dumps(ev, ensure_ascii=False)}\n\n'
+
+    return StreamingResponse(gen(), media_type='text/event-stream',
+                             headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
 @router.get('/quick-asks')

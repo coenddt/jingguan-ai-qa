@@ -6,14 +6,12 @@ import time
 
 import httpx
 
-from app.config import cfg
-
-LLM_TIMEOUT = 120
+from app.config import LLM_TEMPERATURE, LLM_TIMEOUT, cfg
 
 
 async def chat(messages: list[dict], base_url: str | None = None,
                api_key: str | None = None, model: str | None = None,
-               temperature: float = 0.1) -> dict:
+               temperature: float = LLM_TEMPERATURE) -> dict:
     url = (base_url or cfg.LLM_BASE_URL).rstrip('/') + '/chat/completions'
     headers = {'Authorization': f'Bearer {api_key or cfg.LLM_API_KEY}'}
     body = {

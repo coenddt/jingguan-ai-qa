@@ -5,10 +5,11 @@ import uuid
 
 import httpx
 
+from app.config import (
+    TTS_API_URL, TTS_CLUSTER, TTS_ENCODING, TTS_MAX_CHARS, TTS_TIMEOUT, TTS_USER_UID, TTS_VOICE_TYPE,
+)
 from app.config import cfg
 from app.errors import BusinessError
-
-TTS_URL = 'https://openspeech.bytedance.com/api/v1/tts'
 
 
 async def synthesize(text: str) -> bytes:
@@ -16,14 +17,14 @@ async def synthesize(text: str) -> bytes:
         raise BusinessError('TTS 未配置（VOICE_APP_ID/VOICE_ACCESS_TOKEN 缺失）', 400)
     reqid = uuid.uuid4().hex
     body = {
-        'app': {'appid': cfg.VOICE_APP_ID, 'token': 'access_token', 'cluster': ' volcano_tts'},
-        'user': {'uid': 'jingguan'},
-        'audio': {'voice_type': 'zh_female_cancan', 'encoding': 'mp3'},
-        'request': {'reqid': reqid, 'text': text[:1000], 'operation': 'query'},
+        'app': {'appid': cfg.VOICE_APP_ID, 'token': 'access_token', 'cluster': TTS_CLUSTER},
+        'user': {'uid': TTS_USER_UID},
+        'audio': {'voice_type': TTS_VOICE_TYPE, 'encoding': TTS_ENCODING},
+        'request': {'reqid': reqid, 'text': text[:TTS_MAX_CHARS], 'operation': 'query'},
     }
     headers = {'Authorization': f'Bearer; {cfg.VOICE_ACCESS_TOKEN}'}
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.post(TTS_URL, json=body, headers=headers)
+    async with httpx.AsyncClient(timeout=TTS_TIMEOUT) as client:
+        resp = await client.post(TTS_API_URL, json=body, headers=headers)
         if resp.status_code != 200:
             raise BusinessError(f'TTS 服务错误 {resp.status_code}', 502)
         data = resp.json()

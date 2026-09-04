@@ -2,11 +2,10 @@
 
 import asyncio
 
+from app.config import EXEC_TIMEOUT
 from app.db.mongo_store import store
 from app.models.registry import MODEL_TABLE
-from app.services.query_guard import GuardError, MAX_LIMIT, measure_key, verify
-
-EXEC_TIMEOUT = 10
+from app.services.query_guard import GuardError, measure_key, verify
 
 
 def _build_pipeline(q: dict) -> list[dict]:

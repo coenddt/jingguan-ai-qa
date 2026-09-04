@@ -1,4 +1,4 @@
-> 适用场景：新建/修改 server-py 或 server/ Python 后端工程（FastAPI 分层、目录组织、mongo_store 数据层接入）时必读——提炼自《后端FastAPI分层执行文档》v2.0 的结构契约
+> 适用场景：新建/修改 server/ Python 后端工程（FastAPI 分层、目录组织、mongo_store 数据层接入）时必读——提炼自《后端FastAPI分层执行文档》v2.0 的结构契约
 
 # 分层铁律（标准目录树，新工程一律照此搭建）
 
@@ -9,7 +9,7 @@ server/app/
 ├── database.py    # 建连 + init(db) + get_db()
 ├── schemas.py     # 跨路由共享的请求/响应 DTO；单文件膨胀时按域拆 dto/
 ├── db/            # 底座库（mongo_store 等），与业务代码隔离
-├── models/        # schema_defs.py 集中定义 + registry.py 集中注册
+├── models/        # schema/ 按 schema 分文件定义（__init__ 汇总 ALL_SCHEMAS）+ registry.py 集中注册
 ├── routers/       # 路由层：解析参数 → 调 service → 组装响应
 ├── services/      # 业务编排层：核心逻辑、守卫、执行器、缓存
 ├── agent/         # LLM 专属：prompt 组装/schema 注入/步骤跟踪，纯函数
@@ -39,7 +39,7 @@ server/app/
 - 单文件超 ~300 行且含多个职责时拆分；拆分按职责命名（`query_guard.py`），禁建 `utils.py`/`common.py` 垃圾抽屉
 - `__init__.py` 只做包标记与导出，禁业务逻辑
 - 没有第二个调用方不抽公共函数；同逻辑三处重复再聚合
-- 底座库两份载体（`server-py/db/mongo_store` 与项目内 `server/app/db/mongo_store`）：源头改造在 server-py 侧完成后复制进项目，禁只改副本不同步源头
+- 底座库 mongo_store 唯一事实源在 `server/app/db/mongo_store`，改造直接改这里；其他项目（如个人绘画集）的底座副本各自维护、互不同步（原 server-py 载体已于 2026-09-04 删除）
 
 # 禁止事项
 

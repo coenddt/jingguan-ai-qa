@@ -2,20 +2,15 @@
 
 from fastapi import APIRouter
 
+from app.config import APP_CONFIG_DEFAULTS
 from app.db.mongo_store import store
 
 router = APIRouter(prefix='/api', tags=['config'])
 
-DEFAULTS = {
-    'greeting': {'text': '你好，我是经管之星·AI问数助手。', 'questions': []},
-    'suggestions': True, 'tts': False, 'stt': False, 'modelConfig': True,
-    'hotRecommend': {'enabled': True, 'threshold': 3},
-}
-
 
 async def _load_all() -> dict:
     rows = await store.query('AppConfig { key, value }')
-    data = {k: (dict(v) if isinstance(v, dict) else v) for k, v in DEFAULTS.items()}
+    data = {k: (dict(v) if isinstance(v, dict) else v) for k, v in APP_CONFIG_DEFAULTS.items()}
     for r in rows:
         if r['key'] in data and isinstance(r.get('value'), dict) and isinstance(data[r['key']], dict):
             data[r['key']].update(r['value'])
@@ -32,7 +27,7 @@ async def get_config():
 @router.put('/config')
 async def put_config(body: dict):
     for k, v in body.items():
-        if k not in DEFAULTS:
+        if k not in APP_CONFIG_DEFAULTS:
             continue
         await store.upsert('AppConfig', {'key': k}, {'value': v})
     return await _load_all()

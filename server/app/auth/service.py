@@ -6,9 +6,7 @@ import hmac
 import json
 import time
 
-from app.config import cfg
-
-TOKEN_TTL = 86400
+from app.config import TOKEN_TTL, cfg
 
 
 def issue_token(user: str) -> str:

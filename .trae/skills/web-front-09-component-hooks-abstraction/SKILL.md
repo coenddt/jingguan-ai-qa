@@ -108,3 +108,22 @@ showSnackbar('保存成功', 'success')
 
 - 同一模式出现 ≥2 处即提升为通用组件，放 `src/components/`
 - 业务专属组件放 `src/features/qa/`，不下沉到 components
+
+## UI 分块提取子组件（强制）
+
+页面/组件内的 UI 分块（卡片、表格块、弹窗、表单块、列表行、页脚工具条等）**必须提取为子组件**，禁止单文件巨型 JSX：
+
+| 子组件类型 | 存放位置 |
+|-----------|---------|
+| 页面私有子组件 | 页面同目录，如 `pages/Feedback/FeedbackTable.tsx`、`pages/Qa/QaTopBar.tsx` |
+| 业务组件的子块 | `features/qa/` 下独立文件或组件目录（如 `features/qa/AiCard/AiSteps.tsx`） |
+| 跨页面复用 | `src/components/` |
+
+- 子组件通过 props 通信；回调 props 由父组件用 `useCallback` 提供
+- 单一渲染片段（≤10 行的简单映射/条件块）可内联，不必强行拆分
+
+## 复杂状态封装 Hooks（强制）
+
+- 组件内复杂状态（≥3 个关联 state，或含异步流程）提取到 `src/hooks/useXxx.ts`，统一存放、规范化命名
+- hooks 内部用 `async/await` + `try-catch` 收敛错误；组件内零异步（详见 web-front-03 异步分层规范）
+- 示例：`useQaChat`（消息流）、`useSessionActions`（会话 CRUD）、`useModelForm`（新增模型表单）、`useGreetingForm`（开场白表单）、`useTts`（语音播放）

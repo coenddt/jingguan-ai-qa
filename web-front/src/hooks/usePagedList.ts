@@ -1,11 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-
-export interface PagedQuery<F> {
-  /** 0 起始页码 */
-  page: number
-  pageSize: number
-  filters: F
-}
+import type { PageFilters, PagedQuery } from '../types'
 
 interface Options<F> {
   pageSize?: number
@@ -14,8 +8,9 @@ interface Options<F> {
 }
 
 /** 分页列表状态 hook：items/total/page/rowsPerPage/loading/filters + 动作。
- *  所有动作内部显式传参调用 load，杜绝闭包旧值；失败统一走 onError */
-export function usePagedList<T, F extends Record<string, string> = Record<string, string>>(
+ *  fetcher/options 走 ref（保证动作引用稳定，调用方可安全作为 useEffect 依赖）；
+ *  所有动作显式传参调用 load，杜绝闭包旧值；失败统一走 onError */
+export function usePagedList<T, F extends PageFilters = PageFilters>(
   fetcher: (q: PagedQuery<F>) => Promise<{ items: T[]; total: number }>,
   options?: Options<F>,
 ) {
@@ -25,13 +20,17 @@ export function usePagedList<T, F extends Record<string, string> = Record<string
   const [rowsPerPage, setRowsPerPage] = useState(options?.pageSize ?? 10)
   const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState<F>({} as F)
+  const fetcherRef = useRef(fetcher)
+  fetcherRef.current = fetcher
   const optsRef = useRef(options)
   optsRef.current = options
+  const stateRef = useRef({ page, rowsPerPage, filters })
+  stateRef.current = { page, rowsPerPage, filters }
 
   const load = useCallback(async (p: number, size: number, f: F) => {
     setLoading(true)
     try {
-      const data = await fetcher({ page: p, pageSize: size, filters: f })
+      const data = await fetcherRef.current({ page: p, pageSize: size, filters: f })
       setItems(data.items)
       setTotal(data.total)
     } catch {
@@ -40,33 +39,36 @@ export function usePagedList<T, F extends Record<string, string> = Record<string
     } finally {
       setLoading(false)
     }
-  }, [fetcher])
+  }, [])
 
-  const search = (f: F) => {
+  const search = useCallback((f: F) => {
     setFilters(f)
     setPage(0)
-    load(0, rowsPerPage, f)
-  }
+    return load(0, stateRef.current.rowsPerPage, f)
+  }, [load])
 
-  const reset = () => {
+  const reset = useCallback(() => {
     const f = {} as F
     setFilters(f)
     setPage(0)
-    load(0, rowsPerPage, f)
-  }
+    return load(0, stateRef.current.rowsPerPage, f)
+  }, [load])
 
-  const changePage = (p: number) => {
+  const changePage = useCallback((p: number) => {
     setPage(p)
-    load(p, rowsPerPage, filters)
-  }
+    return load(p, stateRef.current.rowsPerPage, stateRef.current.filters)
+  }, [load])
 
-  const changeRowsPerPage = (n: number) => {
+  const changeRowsPerPage = useCallback((n: number) => {
     setRowsPerPage(n)
     setPage(0)
-    load(0, n, filters)
-  }
+    return load(0, n, stateRef.current.filters)
+  }, [load])
 
-  const refresh = () => load(page, rowsPerPage, filters)
+  const refresh = useCallback(
+    () => load(stateRef.current.page, stateRef.current.rowsPerPage, stateRef.current.filters),
+    [load],
+  )
 
   return { items, total, page, rowsPerPage, loading, filters, search, reset, changePage, changeRowsPerPage, refresh }
 }

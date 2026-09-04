@@ -5,7 +5,7 @@ description: "web-front API 调用规范：Cookie 认证、axios 实例、401 �
 
 # API 调用规范（web-front/）
 
-> 后端为 FastAPI（server-py/），接口契约见 `doc/execution/2026/09/未处理-后端FastAPI分层执行文档.md`。
+> 后端为 FastAPI（server/），接口契约见 `doc/execution/2026/09/未处理-后端FastAPI分层执行文档.md`。
 
 ## 认证机制（Cookie，非 Bearer）
 

@@ -39,9 +39,12 @@ export default function ConfirmDialog({
             {cancelText}
           </button>
           <button
-            onClick={async () => {
-              await onConfirm()
-              if (!loading) onClose()
+            onClick={() => {
+              Promise.resolve(onConfirm())
+                .then(() => {
+                  if (!loading) onClose()
+                })
+                .catch(() => undefined)
             }}
             disabled={loading}
             className={`btn flex-[1.5] whitespace-nowrap font-bold ${isError ? 'btn-error' : 'btn-primary'}`}

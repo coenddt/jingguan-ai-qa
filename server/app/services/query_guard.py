@@ -1,11 +1,7 @@
 """AI 查询只读守卫（纯校验，无副作用）：模型/字段/操作符/聚合白名单 + 行数上限"""
 
+from app.config import ALLOWED_MEASURES, ALLOWED_OPS, MAX_LIMIT, NUMERIC_TYPES
 from app.models.registry import BUSINESS_MODELS, MODEL_TABLE
-
-ALLOWED_OPS = {'$eq', '$gt', '$gte', '$lt', '$lte', '$in', '$nin', '$ne', '$exists', '$regex'}
-ALLOWED_AGG = {'$match', '$group', '$sort', '$limit', '$project'}
-ALLOWED_MEASURES = {'sum', 'avg', 'count', 'min', 'max'}
-MAX_LIMIT = 200
 
 
 class GuardError(Exception):
@@ -75,7 +71,7 @@ def verify(query: dict) -> dict:
                 raise GuardError(f'聚合算子越界: {op}')
             if op != 'count' and field not in field_names:
                 raise GuardError(f'聚合字段越界: {field}')
-            if op != 'count' and field and fields_def[field]['type'] not in ('int', 'long', 'float', 'double'):
+            if op != 'count' and field and fields_def[field]['type'] not in NUMERIC_TYPES:
                 raise GuardError(f'聚合目标非数值: {field}')
             norm_measures.append({'op': op, 'field': field})
         checked.update({'groupBy': group_by, 'measures': norm_measures})

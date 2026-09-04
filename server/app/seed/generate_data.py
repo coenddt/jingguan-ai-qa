@@ -2,7 +2,7 @@
 
 import random
 
-from app.config import cfg
+from app.config import APP_CONFIG_DEFAULTS, cfg
 from app.db.mongo_store import store
 from app.seed.dim_defs import (
     INDUSTRIES, INCOME_SUBS, PRODUCT_LINES, PRODUCT_MODELS, RISK_LEVELS,
@@ -150,14 +150,6 @@ async def _seed_app_defaults() -> None:
         'name': cfg.LLM_MODEL, 'baseUrl': cfg.LLM_BASE_URL,
         'apiKey': cfg.LLM_API_KEY, 'modelName': cfg.LLM_MODEL, 'enabled': True,
     })
-    defaults = {
-        'greeting': {'text': '你好，我是经管之星·AI问数助手，可以就经营台账与统计报表向你提供数据问答服务。',
-                     'questions': ['各产品线销售情况', '北京的产品线收入情况', '深圳的产品销售情况']},
-        'suggestions': True,
-        'tts': False,
-        'stt': False,
-        'modelConfig': True,
-        'hotRecommend': {'enabled': True, 'threshold': cfg.SYS_HOT_THRESHOLD},
-    }
+    defaults = APP_CONFIG_DEFAULTS
     for k, v in defaults.items():
         await store.upsert('AppConfig', {'key': k}, {'value': v})

@@ -6,6 +6,7 @@
 
 import re
 
+from app.config import FUZZY_MIN_SCORE, FUZZY_TOP_K, SIM_JACCARD_W, SIM_LEV_W
 from app.db.mongo_store import store
 from app.models.registry import SCHEMA_VER
 
@@ -56,10 +57,11 @@ def _score(a: str, b: str) -> float:
     ba, bb = _bigrams(a), _bigrams(b)
     jac = len(ba & bb) / len(ba | bb) if ba | bb else 0.0
     lev = 1 - _levenshtein(a, b) / max(len(a), len(b))
-    return 0.6 * jac + 0.4 * lev
+    return SIM_JACCARD_W * jac + SIM_LEV_W * lev
 
 
-async def top_k_fuzzy(question: str, k: int = 3, min_score: float = 0.55) -> list[dict]:
+async def top_k_fuzzy(question: str, k: int = FUZZY_TOP_K,
+                      min_score: float = FUZZY_MIN_SCORE) -> list[dict]:
     """L2 模糊示例检索（只作 few-shot，不直接执行）"""
     key = qnorm(question)
     if not key:

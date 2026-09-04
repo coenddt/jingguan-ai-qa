@@ -16,7 +16,7 @@ description: 执行部署/上线/SCP 上传/SSH 服务器操作/SFTP 传输，�
 
 # 部署布局（<user> 账号）
 
-- 远程根目录：`/home/<user>`（本地项目文件按项目根映射，如 `server-py/db/store.py` → `/home/<user>/server-py/db/store.py`）
+- 远程根目录：`/home/<user>`（本地项目文件按项目根映射，如 `server/app/main.py` → `/home/<user>/server/app/main.py`）
 - 进程管理：pm2 在 `/home/<user>/.local/bin`，常驻服务一律 pm2 管理（服务名以服务器 `pm2 list` 实际为准）；`pm2 startup systemd`（unit `pm2-<user>.service`）已注册并已 `pm2 save`
 - 端口分配避开同机已占用的 3000/3100/3200，新服务端口先在服务器确认空闲再用
 

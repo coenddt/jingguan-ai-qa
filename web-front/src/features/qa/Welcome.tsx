@@ -1,9 +1,11 @@
+/** 新会话欢迎页：开场白 + 推荐问题 */
+
 import { Sparkles } from 'lucide-react'
 import { useConfigStore } from '../../store/useConfigStore'
 
 export default function Welcome({ onAsk }: { onAsk: (q: string) => void }) {
-  const { config } = useConfigStore()
-  const greeting = config.greeting
+  const greeting = useConfigStore((s) => s.config.greeting)
+
   return (
     <div className="flex flex-col items-center justify-center h-full px-6">
       <div className="w-12 h-12 rounded-2xl gold-gradient flex items-center justify-center text-[#0f172a] mb-4">

@@ -16,7 +16,9 @@ web-front/
 │   ├── components/       # 通用组件（自 web-saas 复用，见 09 规范）
 │   │   └── Layout/      # 布局组件（Sidebar/Header）
 │   ├── features/qa/      # 问数业务组件（会话列表/AI卡片/输入栏/图表）
-│   ├── pages/           # 页面组件
+│   ├── pages/           # 页面组件（复杂页面用目录：index.tsx + 私有子组件）
+│   ├── hooks/           # 自定义 Hooks（复杂状态/异步流程封装）
+│   ├── services/        # 纯业务函数（按业务域拆：qa/tts/clipboard/download/chart/favorites）
 │   ├── store/           # Zustand 状态管理
 │   ├── utils/           # 工具函数（markdown/url-state/format/date 已复用）
 │   ├── App.tsx          # 根组件（含路由定义与守卫）

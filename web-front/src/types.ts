@@ -1,3 +1,13 @@
+/** 分页查询通用契约（usePagedList / services 分页拉取共用） */
+export type PageFilters = Record<string, string>
+
+export interface PagedQuery<F extends PageFilters = PageFilters> {
+  /** 0 起始页码 */
+  page: number
+  pageSize: number
+  filters: F
+}
+
 export interface Step {
   title: string
   desc: string

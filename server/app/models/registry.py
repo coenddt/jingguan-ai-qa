@@ -1,5 +1,5 @@
 from app.db.mongo_store import store
-from app.models.schema_defs import ALL_SCHEMAS
+from app.models.schema import ALL_SCHEMAS
 
 REGISTERED: list[str] = []
 MODEL_TABLE: dict[str, dict] = {}

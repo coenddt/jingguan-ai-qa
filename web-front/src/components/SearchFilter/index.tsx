@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Filter, RotateCcw, Search } from 'lucide-react'
 
 export interface SearchField {
@@ -19,7 +19,16 @@ interface Props {
 export default function SearchFilter({ fields, onSearch, onReset, initialValues = {} }: Props) {
   const [values, setValues] = useState<Record<string, string>>(initialValues)
 
-  const change = (name: string, value: string) => setValues((p) => ({ ...p, [name]: value }))
+  const change = useCallback((name: string, value: string) => {
+    setValues((p) => ({ ...p, [name]: value }))
+  }, [])
+
+  const handleSearch = useCallback(() => onSearch(values), [onSearch, values])
+
+  const handleReset = useCallback(() => {
+    setValues(initialValues)
+    onReset()
+  }, [initialValues, onReset])
 
   return (
     <div className="p-1">
@@ -33,7 +42,7 @@ export default function SearchFilter({ fields, onSearch, onReset, initialValues 
                   placeholder={f.placeholder}
                   value={values[f.name] || ''}
                   onChange={(e) => change(f.name, e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && onSearch(values)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                   autoComplete="off" />
               </div>
             )}
@@ -57,11 +66,11 @@ export default function SearchFilter({ fields, onSearch, onReset, initialValues 
           </div>
         ))}
         <div className="col-span-12 lg:col-auto flex gap-1.5 whitespace-nowrap">
-          <button className="btn btn-primary whitespace-nowrap px-5 h-10 min-h-0 rounded-2xl font-bold" onClick={() => onSearch(values)}>
+          <button className="btn btn-primary whitespace-nowrap px-5 h-10 min-h-0 rounded-2xl font-bold" onClick={handleSearch}>
             <Search size={18} /> 检索
           </button>
           <button className="btn btn-ghost whitespace-nowrap px-4 h-10 min-h-0 rounded-2xl font-bold border border-gray-200 text-gray-500"
-            onClick={() => { setValues(initialValues); onReset() }}>
+            onClick={handleReset}>
             <RotateCcw size={18} /> 重置
           </button>
         </div>

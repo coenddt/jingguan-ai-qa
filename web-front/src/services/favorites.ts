@@ -1,6 +1,6 @@
-/** 收藏问题列表（jg_favorites）单源读写，ChatMessage / QuickAsk 共用 */
+/** 收藏问题业务（jg_favorites）单源读写，ChatMessage / QuickAsk 共用 */
 
-import { readJsonLS, writeJsonLS } from './localStorage'
+import { readJsonLS, writeJsonLS } from '../utils/localStorage'
 
 const FAVORITES_KEY = 'jg_favorites'
 

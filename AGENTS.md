@@ -26,8 +26,8 @@
 | 场景 | 先读 |
 |------|------|
 | 部署 / 上线 / SCP 上传 / SSH 服务器操作 / SFTP 传输，或询问部署路径、服务器账号 | [.agents/rules/deploy-rules.md](.agents/rules/deploy-rules.md) |
-| 新建 / 修改 `server-py` 或 `server/` 的 Python 后端（FastAPI 分层、目录组织、mongo_store 数据层接入） | [.agents/rules/python-structure-rules.md](.agents/rules/python-structure-rules.md) |
-| 调用 `.agents/skills` 下 CLI 工具（ssh-server-task、gallery-ingest 等）传参执行 | [.agents/rules/cli-args-rules.md](.agents/rules/cli-args-rules.md) |
+| 新建 / 修改 `server/` 的 Python 后端（FastAPI 分层、目录组织、mongo_store 数据层接入） | [.agents/rules/python-structure-rules.md](.agents/rules/python-structure-rules.md) |
+| 调用 `.agents/skills` 下 CLI 工具（ssh-server-task 等）传参执行 | [.agents/rules/cli-args-rules.md](.agents/rules/cli-args-rules.md) |
 | 代码修改后的自检与测试、云端验证、收尾检查的完整细节 | [.agents/rules/testing-rules.md](.agents/rules/testing-rules.md) |
 | 需要回顾项目基调完整原文 | [.agents/rules/project_rules.md](.agents/rules/project_rules.md) |
 
@@ -36,4 +36,4 @@
 - 项目技能位于 `.agents/skills/<skill-name>/SKILL.md`，Codex 自动扫描；需要时用 `$skill-name` 显式调用，或任务匹配技能 description 时自动触发。
 - 技能正文含"按需加载"指引（如 `subs/` 子文件）时，遵循其决策树按需读取对应子文件，不要一次全部读入。
 - 历史的 `.trae/` 目录为 Trae 平台遗留原版，仅供参考；Codex 一律使用 `.agents/` 下的副本，技能与规则中的执行路径以 `.agents/` 为准（密钥文件除外，见下）。
-- `ssh-server-task` 与 `gallery-ingest` 技能目录内的 `.env` 含真实密钥，为保持技能可用已随目录复制，严禁提交入库；两处副本内容必须保持一致，修改时同步更新。
+- `ssh-server-task` 技能目录内的 `.env` 含真实密钥，为保持技能可用已随目录复制，严禁提交入库；两处副本内容必须保持一致，修改时同步更新。

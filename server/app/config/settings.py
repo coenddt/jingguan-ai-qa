@@ -1,8 +1,10 @@
+"""运行环境配置（pydantic-settings 读 .env）：密钥 / 数据库 / LLM 连接 / 语音凭据"""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """全工程唯一配置入口（pydantic-settings 读 .env）"""
+    """环境级配置：真实值仅存服务器侧 .env，不入 git"""
 
     APP_SECRET_KEY: str = 'dev-secret-change-me'
     ADMIN_USER: str = 'admin'
@@ -13,7 +15,6 @@ class Settings(BaseSettings):
 
     VOICE_APP_ID: str = ''
     VOICE_ACCESS_TOKEN: str = ''
-    SYS_HOT_THRESHOLD: int = 3
 
     LLM_BASE_URL: str = 'https://api.deepseek.com/v1'
     LLM_API_KEY: str = ''

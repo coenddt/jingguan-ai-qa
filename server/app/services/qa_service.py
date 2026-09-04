@@ -5,13 +5,14 @@ import time
 
 from app.agent.prompt_builder import build_retry_prompt, build_system_prompt
 from app.agent.step_tracker import StepTracker
+from app.config import (
+    CONCLUSION_TMPL, LLM_MAX_RETRIES, MAX_LIMIT, QA_CHART, QA_CONCLUSION_ROWS,
+    QA_FOLLOW_UPS, QA_NUMERIC_FIELDS, QA_SOURCES, QA_TIME_DIMS, QA_TITLE_MAX,
+)
 from app.db.mongo_store import store
 from app.errors import BusinessError
 from app.services import llm_client, query_cache, query_executor
 from app.services.query_guard import GuardError, measure_key, verify
-
-_NUMERIC = {'int', 'long', 'float', 'double'}
-_TIME_DIMS = {'year', 'month', 'quarter', 'signDate'}
 
 
 async def _active_model() -> dict:
@@ -68,13 +69,13 @@ def _build_chart(question: str, q: dict, rows: list[dict]) -> dict | None:
         x = [str(r.get(dim, ''))[:8] if dim else str(i + 1) for i, r in enumerate(rows)]
         series = [round(float(r.get(mk) or 0), 2) for r in rows]
         title = f'{mk}分布'
-    if any(w in question for w in ('占比', '构成', '分布比例', '结构')) and len(rows) <= 8:
+    if any(w in question for w in QA_CHART['pie_keywords']) and len(rows) <= QA_CHART['pie_max_rows']:
         ctype = 'pie'
-    elif dim in _TIME_DIMS:
+    elif dim in QA_TIME_DIMS:
         ctype = 'line'
     else:
         ctype = 'bar'
-    unit = '万元' if ('Amt' in mk or 'income' in mk or 'Goal' in mk) else ''
+    unit = QA_CHART['amount_unit'] if any(m in mk for m in QA_CHART['amount_markers']) else ''
     return {'type': ctype, 'title': title, 'unit': unit, 'series': series, 'x': x,
             'legend': [mk] if ctype != 'pie' else x}
 
@@ -92,7 +93,7 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
               user_name: str = '管理员') -> dict:
     t0 = time.monotonic()
     tracker = StepTracker()
-    n_sources = len(source_keys) if source_keys else 8
+    n_sources = len(source_keys) if source_keys else sum(len(g['items']) for g in QA_SOURCES)
     tracker.done(0, f'识别问题意图，在 {n_sources} 个已选数据源分组中确定目标模型')
 
     model_conf = await _active_model()
@@ -127,16 +128,16 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
         tracker.done(1, f'LLM 生成查询：{json.dumps(q, ensure_ascii=False)[:180]}')
 
         last_err = ''
-        for attempt in range(3):
+        for attempt in range(LLM_MAX_RETRIES):
             try:
                 checked = verify(q)
-                tracker.done(2, '守卫校验通过：模型/字段/操作符均在白名单内，强制行数上限 200')
+                tracker.done(2, f'守卫校验通过：模型/字段/操作符均在白名单内，强制行数上限 {MAX_LIMIT}')
                 rows, truncated = await query_executor.run(checked)
                 used_query = checked
                 break
             except (GuardError, BusinessError, RuntimeError, TimeoutError) as e:
                 last_err = str(e)
-                if attempt == 2:
+                if attempt == LLM_MAX_RETRIES - 1:
                     raise BusinessError(f'查询生成失败：{last_err}', 422)
                 tracker.fail(2, f'第{attempt + 1}次校验/执行未通过：{last_err[:120]}，已回传 LLM 重试')
                 q, ret = await llm_client.chat_json([
@@ -170,7 +171,7 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
         display_fields = list(rows[0].keys()) if rows else []
     else:
         numeric_field = next(
-            (f for f in ('income', 'contractAmt', 'orderAmt', 'solutionIncome', 'yoy')
+            (f for f in QA_NUMERIC_FIELDS
              if f in used_query['fields'] and rows and isinstance(rows[0].get(f), (int, float))),
             None)
         display_fields = used_query['fields']
@@ -181,19 +182,14 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
     chart = _build_chart(question, used_query, rows)
     findings = _build_findings(stats, numeric_field)
 
-    sample = rows[:20]
-    conclusion_sys = (
-        '你是经营数据分析助手。基于给定的真实查询结果行生成分析结论。'
-        '只输出 JSON：{"text": "markdown 结论（2-4 句，引用真实数字）", "follow_ups": ["追问1", "追问2", "追问3"]}。'
-        f'禁止编造结果中不存在的数字。'
-    )
+    sample = rows[:QA_CONCLUSION_ROWS]
     conclusion, ret2 = await llm_client.chat_json([
-        {'role': 'system', 'content': conclusion_sys},
+        {'role': 'system', 'content': CONCLUSION_TMPL},
         {'role': 'user', 'content': f'问题：{question}\n查询：{json.dumps(used_query, ensure_ascii=False)}\n'
                                     f'结果行（共{len(rows)}条）：{json.dumps(sample, ensure_ascii=False)}'},
     ], **llm_kw)
     tokens += ret2['total_tokens']
-    tracker.done(4, '基于真实结果行生成结论与 3 条追问建议')
+    tracker.done(4, f'基于真实结果行生成结论与 {QA_FOLLOW_UPS} 条追问建议')
 
     columns = list(rows[0].keys()) if rows else []
     resp = {
@@ -205,7 +201,7 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
         'stats': stats,
         'chart': chart,
         'text': conclusion.get('text', ''),
-        'follow_ups': (conclusion.get('follow_ups') or [])[:3],
+        'follow_ups': (conclusion.get('follow_ups') or [])[:QA_FOLLOW_UPS],
         'meta': {'elapsed_s': round(time.monotonic() - t0, 2), 'tokens': tokens},
     }
 
@@ -231,7 +227,7 @@ async def _ensure_session(session_id: str | None, title: str) -> dict:
         if not s:
             raise BusinessError('会话不存在', 404)
         return s
-    return await store.insert('QaSession', {'title': (title or '新对话')[:20], 'userName': '管理员'})
+    return await store.insert('QaSession', {'title': (title or '新对话')[:QA_TITLE_MAX], 'userName': '管理员'})
 
 
 async def _save_messages(session: dict, question: str, resp: dict, user_name: str) -> None:

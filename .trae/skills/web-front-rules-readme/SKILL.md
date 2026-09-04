@@ -51,7 +51,7 @@ description: "web-front 开发规则总纲：全部规范索引（基础/接口/
 
 ```
 开始开发？
-├─ 新建页面 → 读 03(代码风格)、04(项目结构)
+├─ 新建页面 → 读 03(代码风格：useCallback/异步分层/业务分层)、04(项目结构)
 │  ├─ 需要表格 → 09(CustomTablePagination) + 10(列宽)
 │  ├─ 需要搜索 → 06(SearchFilter) + 07(优先使用)
 │  ├─ 需要上传 → 08(文件上传指南)
@@ -59,8 +59,10 @@ description: "web-front 开发规则总纲：全部规范索引（基础/接口/
 │  └─ 需要分页 → 09(CustomTablePagination)
 ├─ 修改 API → 读 05(API调用规范)
 ├─ 编写 UI → 读 02(daisyUI组件规范) + ui-aesthetic(视觉基调)
-├─ 代码审查 → 读 03、07、09
-└─ 重构优化 → 读 09(拆分原则)
+├─ 复杂状态/异步流程 → 封装 src/hooks/（03+09 异步分层）
+├─ 纯业务函数 → 封装 src/services/（03 业务分层）
+├─ 代码审查 → 读 03、07、09（重点：useCallback、then/catch、Zustand 细粒度、UI 分块拆分）
+└─ 重构优化 → 读 09(UI 分块拆分原则)
 ```
 
 ## 新增规则说明

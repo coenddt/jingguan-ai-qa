@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+/** 数据源选择弹窗：分组勾选 + 导入/模板入口 */
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, FileUp, History } from 'lucide-react'
 import { qaApi } from '../../api/modules/qa'
 import { importApi } from '../../api/modules/importApi'
@@ -6,6 +8,8 @@ import type { DataSourceGroup } from '../../types'
 import ImportDialog from './ImportDialog'
 import { useSnackbar } from '../../hooks/useSnackbar'
 import Modal from '../../components/Modal'
+import { downloadBlob } from '../../services/download'
+import SourceGroupList from './SourceGroupList'
 
 interface Props {
   open: boolean
@@ -24,22 +28,23 @@ export default function SourcePicker({ open, selected, onChange, onClose }: Prop
     qaApi.getSources().then(({ data }) => setGroups(data)).catch(() => showSnackbar('数据源加载失败', 'error'))
   }, [open, showSnackbar])
 
-  if (!open) return null
-  const allKeys = groups.flatMap((g) => g.items.map((i) => i.key))
-  const toggle = (key: string) => {
-    onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key])
-  }
+  const allKeys = useMemo(() => groups.flatMap((g) => g.items.map((i) => i.key)), [groups])
   const allSelected = allKeys.length > 0 && allKeys.every((k) => selected.includes(k))
 
-  const downloadTemplate = async () => {
-    const { data } = await importApi.downloadTemplate('commercial')
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'commercial_template.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const toggle = useCallback((key: string) => {
+    onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key])
+  }, [onChange, selected])
+
+  const downloadTemplate = useCallback(() => {
+    importApi.downloadTemplate('commercial')
+      .then(({ data }) => downloadBlob(data, 'commercial_template.xlsx'))
+      .catch(() => showSnackbar('模板下载失败，请稍后重试', 'error'))
+  }, [showSnackbar])
+
+  const openImport = useCallback(() => setImportOpen(true), [])
+  const closeImport = useCallback(() => setImportOpen(false), [])
+
+  if (!open) return null
 
   return (
     <>
@@ -48,13 +53,13 @@ export default function SourcePicker({ open, selected, onChange, onClose }: Prop
         footerClassName="justify-between"
         footer={<>
           <div className="flex gap-2">
-            <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={() => setImportOpen(true)}>
+            <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
               <FileUp size={15} /> 导入
             </button>
             <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={downloadTemplate}>
               <Download size={15} /> 下载模板
             </button>
-            <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={() => setImportOpen(true)}>
+            <button className="btn btn-ghost btn-sm whitespace-nowrap gap-1" onClick={openImport}>
               <History size={15} /> 导入记录
             </button>
           </div>
@@ -63,27 +68,9 @@ export default function SourcePicker({ open, selected, onChange, onClose }: Prop
         <div className="text-xs text-gray-400 mb-3">
           {allSelected ? '已选择所有数据源' : `已选 ${selected.length} 个数据源`}
         </div>
-        <div className="space-y-4">
-          {groups.map((g) => (
-            <div key={g.group}>
-              <div className="text-sm font-bold text-gray-700 mb-2">{g.group}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {g.items.map((item) => (
-                  <label key={item.key} className="flex items-start gap-2.5 bg-gray-50 rounded-xl p-3 cursor-pointer hover:bg-gray-100">
-                    <input type="checkbox" className="checkbox checkbox-primary checkbox-sm mt-0.5"
-                      checked={selected.includes(item.key)} onChange={() => toggle(item.key)} />
-                    <div className="min-w-0">
-                      <div className="text-sm font-bold text-gray-700">{item.name}</div>
-                      {item.label && <div className="text-xs text-gray-400 truncate">{item.label}</div>}
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <SourceGroupList groups={groups} selected={selected} onToggle={toggle} />
       </Modal>
-      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
+      <ImportDialog open={importOpen} onClose={closeImport} />
     </>
   )
 }

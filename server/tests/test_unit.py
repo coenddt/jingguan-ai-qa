@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.agent.prompt_builder import build_system_prompt
+from app.agent.prompts import build_messages
 from app.agent.schema_registry import describe_models
 from app.agent.step_tracker import StepTracker
 from app.auth.service import issue_token, verify_token

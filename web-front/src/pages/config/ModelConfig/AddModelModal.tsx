@@ -3,6 +3,7 @@
 import { useCallback } from 'react'
 import { FlaskConical } from 'lucide-react'
 import Modal from '../../../components/Modal'
+import { LLM_PLATFORMS } from '../../../api/modules/models'
 import { useModelForm } from '../../../hooks/useModelForm'
 
 interface Props {
@@ -12,10 +13,11 @@ interface Props {
 
 export default function AddModelModal({ open, onClose }: Props) {
   const {
-    baseUrl, apiKey, modelName, testing, testOk, canTest,
-    changeBaseUrl, changeApiKey, changeModelName,
+    platform, baseUrl, apiKey, modelName, testing, testOk, canTest,
+    changePlatform, changeBaseUrl, changeApiKey, changeModelName,
     runTest, submitAdd, resetAdd,
   } = useModelForm()
+  const preset = LLM_PLATFORMS.find((p) => p.value === platform)
 
   const handleClose = useCallback(() => {
     resetAdd()
@@ -27,8 +29,17 @@ export default function AddModelModal({ open, onClose }: Props) {
       title={<h3 className="font-bold text-lg">新增模型</h3>} headerClassName="mb-4">
       <div className="space-y-3">
         <div>
-          <label className="text-sm font-bold text-gray-600 mb-1 block">Base URL</label>
-          <input className="input input-bordered w-full" placeholder="https://api.deepseek.com/v1"
+          <label className="text-sm font-bold text-gray-600 mb-1 block">平台</label>
+          <select className="select select-bordered w-full" value={platform}
+            onChange={(e) => changePlatform(e.target.value)}>
+            {LLM_PLATFORMS.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-bold text-gray-600 mb-1 block">Base URL（留空使用平台默认）</label>
+          <input className="input input-bordered w-full" placeholder={preset?.baseUrl}
             value={baseUrl} onChange={(e) => changeBaseUrl(e.target.value)} />
         </div>
         <div>

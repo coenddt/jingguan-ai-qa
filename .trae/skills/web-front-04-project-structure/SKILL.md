@@ -20,7 +20,7 @@ web-front/
 │   ├── hooks/           # 自定义 Hooks（复杂状态/异步流程封装）
 │   ├── services/        # 纯业务函数（按业务域拆：qa/tts/clipboard/download/chart/favorites）
 │   ├── store/           # Zustand 状态管理
-│   ├── utils/           # 工具函数（markdown/url-state/format/date 已复用）
+│   ├── utils/           # 通用工具函数（无业务语义：date/error/localStorage/markdown）
 │   ├── App.tsx          # 根组件（含路由定义与守卫）
 │   ├── index.css        # 全局样式（@theme 主题变量 + 装饰类）
 │   ├── types.ts         # 全局 TS 契约（对齐后端 QaAskResp 等）
@@ -50,4 +50,6 @@ web-front/
 |------|------|
 | 问数链路新组件 | `src/features/qa/` 下新建 |
 | 独立新页面 | `src/pages/` 下新建目录 |
+| 复杂状态/异步流程 | `src/hooks/` 下新建 useXxx.ts |
+| 纯业务函数 | `src/services/` 下按业务域新建 |
 | 配置类扩展 | 现有 `/config/*` 页内新增 Tab 或卡片 |

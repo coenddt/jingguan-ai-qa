@@ -51,7 +51,7 @@ export default function ModelConfig() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <PageHeader title="模型配置" subtitle="OpenAI 兼容模型管理；DeepSeek 为默认启用项"
+      <PageHeader title="模型配置" subtitle="OpenAI 兼容模型管理；支持 DeepSeek / 火山引擎方舟"
         actions={[{ label: '新增模型', icon: <Plus size={16} />, onClick: openAdd }]} />
 
       <ModelList models={models} onEnable={enable} onDelete={openDelete} />

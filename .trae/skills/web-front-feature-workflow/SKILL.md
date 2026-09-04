@@ -7,7 +7,7 @@ description: "web-front 新页面/新功能开发工作流：页面设计、API 
 
 ## 概述
 
-遵循 **设计 → 审阅 → 开发** 三个阶段。前端目录为 `web-front/`，接口契约见 `doc/execution/2026/09/未处理-后端FastAPI分层执行文档.md`。
+遵循 **设计 → 审阅 → 开发** 三个阶段。前端目录为 `web-front/`，接口契约见 `doc/execution/2026/09/已完成-后端FastAPI分层执行文档.md`。
 
 ---
 

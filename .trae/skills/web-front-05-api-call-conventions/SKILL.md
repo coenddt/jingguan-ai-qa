@@ -5,7 +5,7 @@ description: "web-front API 调用规范：Cookie 认证、axios 实例、401 �
 
 # API 调用规范（web-front/）
 
-> 后端为 FastAPI（server/），接口契约见 `doc/execution/2026/09/未处理-后端FastAPI分层执行文档.md`。
+> 后端为 FastAPI（server/），接口契约见 `doc/execution/2026/09/已完成-后端FastAPI分层执行文档.md`。
 
 ## 认证机制（Cookie，非 Bearer）
 
@@ -50,23 +50,25 @@ http.interceptors.response.use(
 ## API 模块文件组织
 
 - 所有 API 函数封装在 `web-front/src/api/modules/` 目录下，按业务模块拆分文件
-- 页面组件应导入 API 模块函数进行调用，禁止页面内直接写 axios 裸调
+- 纯业务函数（可脱离组件复用：拼复制文本、下载 Blob、收藏读写、图表配置构建）放 `src/services/`，内部再调 API 模块（见 web-front-03 业务分层）
+- 页面组件禁止页面内直接写 axios 裸调：接口调用走 API 模块，业务编排走 services
 - API 模块用 TypeScript 编写：入参与返回值标注类型，复用 `src/types.ts` 中的契约（如 `QaAskResp`）
 
-## 后端端点清单（v2.0 契约）
+## 后端端点清单（v2.1 契约）
 
 | 端点 | 用途 |
 |------|------|
 | `POST /api/auth/login` / `GET /api/auth/check` / `POST /api/auth/logout` | 登录 / nginx 校验回调 / 登出 |
 | `POST /api/qa/ask` | 智能问数（返回 QaAskResp） |
-| `GET /api/qa/sessions` `PATCH /api/qa/sessions/{id}` `DELETE /api/qa/sessions/{id}` | 会话列表/置顶/重命名/删除 |
+| `GET /api/qa/sessions` `POST /api/qa/sessions` `PATCH /api/qa/sessions/{id}` `DELETE /api/qa/sessions/{id}` | 会话列表/新建/置顶/重命名/删除 |
 | `GET /api/qa/sessions/{id}/messages` | 会话消息恢复 |
 | `GET /api/qa/sources` | 数据源分组列表 |
-| `GET /api/qa/log` | 问数日志 |
+| `GET /api/qa/quick-asks` | 预置热问 |
+| `GET /api/qa/log` | 问数日志（分页） |
 | `GET/PUT /api/config` | 应用配置 |
-| `GET /api/models` 等 | 模型配置 CRUD |
-| `GET /api/feedback` `POST/PATCH /api/feedback/{id}` | 回复校对 |
-| `POST /api/import/upload` `GET /api/import/log` | 台账导入 / 导入记录 |
+| `GET/POST /api/models` `PATCH/DELETE /api/models/{id}` `POST /api/models/test` | 模型配置 CRUD / 连通测试 |
+| `POST /api/feedback` `GET /api/feedback` `PUT /api/feedback/{id}` | 提交反馈 / 分页列表 / 处理回复 |
+| `POST /api/import/upload` `GET /api/import/log` `GET /api/import/template` | 台账导入 / 导入记录（分页）/ 模板下载 |
 | `POST /api/tts` | 语音播报 |
 
 ## 接口调用原则

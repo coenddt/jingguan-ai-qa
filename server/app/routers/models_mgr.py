@@ -13,7 +13,8 @@ router = APIRouter(prefix='/api/models', tags=['models'])
 
 
 class ModelIn(BaseModel):
-    baseUrl: str
+    platform: str = 'deepseek'
+    baseUrl: str = ''
     apiKey: str
     modelName: str
 
@@ -31,20 +32,22 @@ def _mask(m: dict) -> dict:
 
 @router.get('')
 async def list_models():
-    rows = await store.query('AiModel($sort:@s0) { _id, name, baseUrl, apiKey, modelName, enabled }',
+    rows = await store.query('AiModel($sort:@s0) { _id, name, platform, baseUrl, apiKey, modelName, enabled }',
                              {'s0': {'createdAt': 1}})
     return [_mask(r) for r in rows]
 
 
 @router.post('')
 async def add_model(body: ModelIn):
+    if body.platform not in llm_client.PLATFORM_PRESETS:
+        raise BusinessError(f'不支持的大模型平台：{body.platform}', 400)
+    base_url = llm_client.resolve_base_url(body.platform, body.baseUrl)
     name = body.modelName
-    exists = await store.exists('AiModel', {'name': name})
-    if exists:
-        host = urlparse(body.baseUrl).netloc or 'host'
+    if await store.exists('AiModel', {'name': name}):
+        host = urlparse(base_url).netloc or 'host'
         name = f'{host}-{body.modelName}'
     s = await store.insert('AiModel', {
-        'name': name, 'baseUrl': body.baseUrl, 'apiKey': body.apiKey,
+        'name': name, 'platform': body.platform, 'baseUrl': base_url, 'apiKey': body.apiKey,
         'modelName': body.modelName, 'enabled': False,
     })
     return _mask({**s, '_id': s['_id']})
@@ -73,10 +76,13 @@ async def delete_model(mid: str):
 
 @router.post('/test')
 async def test_model(body: ModelIn):
+    if body.platform not in llm_client.PLATFORM_PRESETS:
+        return {'ok': False, 'error': f'不支持的大模型平台：{body.platform}'}
     try:
         ret = await llm_client.chat(
             [{'role': 'user', 'content': 'ping'}],
-            base_url=body.baseUrl, api_key=body.apiKey, model=body.modelName,
+            base_url=llm_client.resolve_base_url(body.platform, body.baseUrl),
+            api_key=body.apiKey, model=body.modelName,
         )
         return {'ok': True, 'latency_ms': int(ret['elapsed_s'] * 1000)}
     except Exception as e:

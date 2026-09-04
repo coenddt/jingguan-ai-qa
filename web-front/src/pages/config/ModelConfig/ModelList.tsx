@@ -1,6 +1,7 @@
 /** 应用模型列表卡片（ModelConfig 页使用） */
 
 import { Trash2 } from 'lucide-react'
+import { LLM_PLATFORMS } from '../../../api/modules/models'
 import type { ModelItem } from '../../../types'
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function ModelList({ models, onEnable, onDelete }: Props) {
+  const platformLabel = (v: string) => LLM_PLATFORMS.find((p) => p.value === v)?.label ?? v
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
       <h3 className="font-black text-gray-700 mb-4">应用模型设置</h3>
@@ -19,6 +21,7 @@ export default function ModelList({ models, onEnable, onDelete }: Props) {
             <div className="flex-1 min-w-0">
               <div className="font-bold text-sm text-gray-700 flex items-center gap-2">
                 {m.name}
+                <span className="badge badge-ghost badge-sm">{platformLabel(m.platform)}</span>
                 {m.enabled && <span className="badge badge-success badge-sm">启用中</span>}
               </div>
               <div className="text-xs text-gray-400 truncate">{m.baseUrl} · {m.modelName} · {m.apiKey || 'sk-***'}</div>

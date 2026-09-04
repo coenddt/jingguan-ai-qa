@@ -8,7 +8,7 @@ description: 新建/修改 server/ Python 后端工程（FastAPI 分层、目录
 ```
 server/app/
 ├── main.py        # 仅组装：实例/CORS/路由注册/启动事件，禁业务逻辑
-├── config.py      # pydantic-settings 读 .env，全工程唯一配置入口
+├── config/        # 配置中心：settings.py（pydantic-settings 读 .env）+ 业务常量分文件，__init__.py 唯一出口
 ├── database.py    # 建连 + init(db) + get_db()
 ├── schemas.py     # 跨路由共享的请求/响应 DTO；单文件膨胀时按域拆 dto/
 ├── db/            # 底座库（mongo_store 等），与业务代码隔离
@@ -46,7 +46,7 @@ server/app/
 
 # 禁止事项
 
-❌ 配置散落：禁在 config.py 之外 `os.getenv`/硬编码密钥；`.env` 真实值不入 git，密钥出参脱敏
+❌ 配置散落：禁在 config/ 包之外 `os.getenv`/硬编码密钥；`.env` 真实值不入 git，密钥出参脱敏
 ❌ 过渡方案共存：换数据层/换方案后旧方案代码立即删净，禁"先跑通再迁"双轨并存
 ❌ 静默兜底：模型/字段不存在直接抛业务错误，禁回退默认值
 ❌ 缓存命中跳过守卫：任何来源的查询模板执行前必过 guard（精确命中可复用模板，不可免检）

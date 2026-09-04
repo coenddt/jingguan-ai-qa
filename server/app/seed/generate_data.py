@@ -147,7 +147,7 @@ async def _seed_reports() -> None:
 
 async def _seed_app_defaults() -> None:
     await store.insert('AiModel', {
-        'name': cfg.LLM_MODEL, 'baseUrl': cfg.LLM_BASE_URL,
+        'name': cfg.LLM_MODEL, 'platform': cfg.LLM_PLATFORM, 'baseUrl': cfg.LLM_BASE_URL,
         'apiKey': cfg.LLM_API_KEY, 'modelName': cfg.LLM_MODEL, 'enabled': True,
     })
     defaults = APP_CONFIG_DEFAULTS

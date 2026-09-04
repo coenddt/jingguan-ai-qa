@@ -47,7 +47,7 @@ showSnackbar('保存成功', 'success')
 | `onRefresh` | `function` | 刷新回调 |
 | `actions` | `array` | 操作按钮数组：`{ label, icon, onClick }` |
 
-依赖 `utils/url-state` 的 `navigatePreserving`（已一并复用到 `src/utils/url-state.ts`）。
+组合复用 `Breadcrumb` + `PageTitle`。
 
 ### 4. EmptyTableRow（表格空状态行）
 
@@ -91,18 +91,21 @@ showSnackbar('保存成功', 'success')
 | 组件 | 用途 |
 |------|------|
 | `PageTitle` | 简单页面标题 |
-| `Breadcrumb` | 面包屑（依赖 utils/url-state） |
+| `Breadcrumb` | 面包屑（react-router 自动生成） |
 | `StepperIndicator` | 步骤指示器 |
 | `AnimateInView` | 滚动入场动画（delay 递进） |
+| `Modal` | 通用弹窗壳（替代各处手写 dialog 骨架） |
+| `SearchBar` / `SearchFilter` | 搜索筛选（见 06/07 专属规范） |
 
-## 已复用工具函数（src/utils/）
+## 已复用工具函数与分层（src/utils/ 与 src/services/）
 
 | 文件 | 用途 |
 |------|------|
-| `markdown.ts` | normalizeMarkdown / stripMarkdownForPreview |
-| `url-state.ts` | navigatePreserving 等 URL 状态保持 |
-| `format.ts` | 通用格式化 |
-| `date.ts` | 日期工具 |
+| `utils/markdown.ts` | normalizeMarkdown / stripMarkdownForPreview |
+| `utils/date.ts` | 日期工具 |
+| `utils/error.ts` | 错误信息提取 |
+| `utils/localStorage.ts` | localStorage 安全读写 |
+| `services/*.ts` | 纯业务函数按业务域拆分（qa/tts/clipboard/download/chart/favorites/feedback/importLog，见 03 业务分层） |
 
 ## 新增通用组件的原则
 
@@ -126,4 +129,9 @@ showSnackbar('保存成功', 'success')
 
 - 组件内复杂状态（≥3 个关联 state，或含异步流程）提取到 `src/hooks/useXxx.ts`，统一存放、规范化命名
 - hooks 内部用 `async/await` + `try-catch` 收敛错误；组件内零异步（详见 web-front-03 异步分层规范）
-- 示例：`useQaChat`（消息流）、`useSessionActions`（会话 CRUD）、`useModelForm`（新增模型表单）、`useGreetingForm`（开场白表单）、`useTts`（语音播放）
+- 示例：`useQaChat`（消息流）、`useSessionActions`（会话 CRUD）、`useModelForm`（新增模型表单）、`useGreetingForm`（开场白表单）、`useTts`（语音播放）、`usePagedList`（分页列表：items/total/page/rowsPerPage/loading/filters + 动作）
+
+## 列表页分页组合（强制）
+
+- 列表页分页统一用 `usePagedList`（`src/hooks/usePagedList.ts`）+ 后端库内分页接口（返回 `{items,total}`），禁再手写 page/rowsPerPage/loading 散装 state
+- 同构的"全量列表 store"（防重锁 + loaded 标记）用 `createListStore`（`src/store/createListStore.ts`）工厂创建，禁每个 store 复制同构模板

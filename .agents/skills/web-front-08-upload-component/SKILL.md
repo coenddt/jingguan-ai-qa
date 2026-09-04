@@ -14,7 +14,8 @@ description: "web-front 文件上传指南：daisyUI 基础文件上传、台账
 ### 台账导入（ImportDialog）
 - 入口：问数页数据源选择区的导入入口
 - 上传目标：`POST /api/import/upload`（FormData，Excel/CSV）
-- 导入记录查询：`GET /api/import/log`
+- 导入记录查询：`GET /api/import/log`（分页，返回 `{items,total}`）
+- 模板下载：`GET /api/import/template`
 
 ## 上传实现建议
 

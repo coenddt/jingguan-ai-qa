@@ -5,6 +5,7 @@ AI_MODEL_SCHEMA = {
     'idPrefix': 'M', 'timestamps': True,
     'fields': {
         'name': {'type': 'string', 'default': ''},
+        'platform': {'type': 'string', 'default': 'deepseek'},
         'baseUrl': {'type': 'string', 'default': ''},
         'apiKey': {'type': 'string', 'default': ''},
         'modelName': {'type': 'string', 'default': ''},

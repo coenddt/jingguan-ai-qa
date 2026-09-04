@@ -3,11 +3,11 @@
 import json
 import time
 
-from app.agent.prompt_builder import build_retry_prompt, build_system_prompt
+from app.agent.prompts import scenario_params
 from app.agent.step_tracker import StepTracker
 from app.config import (
-    CONCLUSION_TMPL, LLM_MAX_RETRIES, MAX_LIMIT, QA_CHART, QA_CONCLUSION_ROWS,
-    QA_FOLLOW_UPS, QA_NUMERIC_FIELDS, QA_SOURCES, QA_TIME_DIMS, QA_TITLE_MAX,
+    MAX_LIMIT, QA_CHART, QA_CONCLUSION_ROWS, QA_FOLLOW_UPS,
+    QA_NUMERIC_FIELDS, QA_SOURCES, QA_TIME_DIMS, QA_TITLE_MAX,
 )
 from app.db.mongo_store import store
 from app.errors import BusinessError
@@ -16,10 +16,13 @@ from app.services.query_guard import GuardError, measure_key, verify
 
 
 async def _active_model() -> dict:
-    m = await store.query_one('AiModel($condition:@c0) { _id, name, baseUrl, apiKey, modelName }',
-                              {'c0': {'enabled': True}})
+    m = await store.query_one(
+        'AiModel($condition:@c0) { _id, name, platform, baseUrl, apiKey, modelName }',
+        {'c0': {'enabled': True}})
     if not m or not m.get('apiKey'):
         raise BusinessError('无启用的 AI 模型，请先在模型配置中启用', 400)
+    if m.get('platform') not in llm_client.PLATFORM_PRESETS:
+        raise BusinessError('启用中的 AI 模型缺少有效平台配置，请删除后重新添加', 400)
     return m
 
 
@@ -97,8 +100,7 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
     tracker.done(0, f'识别问题意图，在 {n_sources} 个已选数据源分组中确定目标模型')
 
     model_conf = await _active_model()
-    llm_kw = {'base_url': model_conf['baseUrl'], 'api_key': model_conf['apiKey'],
-              'model': model_conf['modelName']}
+    q_params = scenario_params('query_gen')
 
     rows: list[dict] | None = None
     truncated = False
@@ -119,16 +121,12 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
 
     if rows is None:
         few = await query_cache.top_k_fuzzy(question)
-        messages = [
-            {'role': 'system', 'content': build_system_prompt(few)},
-            {'role': 'user', 'content': question},
-        ]
-        q, ret1 = await llm_client.chat_json(messages, **llm_kw)
+        q, ret1 = await llm_client.invoke('query_gen', {'question': question, 'few_shots': few}, model_conf)
         tokens += ret1['total_tokens']
         tracker.done(1, f'LLM 生成查询：{json.dumps(q, ensure_ascii=False)[:180]}')
 
         last_err = ''
-        for attempt in range(LLM_MAX_RETRIES):
+        for attempt in range(q_params['retries']):
             try:
                 checked = verify(q)
                 tracker.done(2, f'守卫校验通过：模型/字段/操作符均在白名单内，强制行数上限 {MAX_LIMIT}')
@@ -137,13 +135,11 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
                 break
             except (GuardError, BusinessError, RuntimeError, TimeoutError) as e:
                 last_err = str(e)
-                if attempt == LLM_MAX_RETRIES - 1:
+                if attempt == q_params['retries'] - 1:
                     raise BusinessError(f'查询生成失败：{last_err}', 422)
                 tracker.fail(2, f'第{attempt + 1}次校验/执行未通过：{last_err[:120]}，已回传 LLM 重试')
-                q, ret = await llm_client.chat_json([
-                    {'role': 'system', 'content': build_system_prompt()},
-                    {'role': 'user', 'content': build_retry_prompt(question, q, last_err)},
-                ], **llm_kw)
+                q, ret = await llm_client.invoke(
+                    'query_gen', {'question': question, 'bad_query': q, 'error': last_err}, model_conf)
                 tokens += ret['total_tokens']
 
     tracker.done(3, f'执行取数完成，返回 {len(rows)} 条{ "（已截断）" if truncated else "" }')
@@ -183,11 +179,8 @@ async def ask(question: str, session_id: str | None, source_keys: list[str],
     findings = _build_findings(stats, numeric_field)
 
     sample = rows[:QA_CONCLUSION_ROWS]
-    conclusion, ret2 = await llm_client.chat_json([
-        {'role': 'system', 'content': CONCLUSION_TMPL},
-        {'role': 'user', 'content': f'问题：{question}\n查询：{json.dumps(used_query, ensure_ascii=False)}\n'
-                                    f'结果行（共{len(rows)}条）：{json.dumps(sample, ensure_ascii=False)}'},
-    ], **llm_kw)
+    conclusion, ret2 = await llm_client.invoke(
+        'conclusion', {'question': question, 'query': used_query, 'rows': sample}, model_conf)
     tokens += ret2['total_tokens']
     tracker.done(4, f'基于真实结果行生成结论与 {QA_FOLLOW_UPS} 条追问建议')
 

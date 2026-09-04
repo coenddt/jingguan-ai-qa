@@ -80,7 +80,8 @@ def test_qnorm():
 
 
 def test_prompt_contains_models():
-    p = build_system_prompt()
+    msgs = build_messages('query_gen', {'question': '各产品线销售情况'})
+    p = '\n'.join(m['content'] for m in msgs)
     assert 'ReportOverall' in p and 'CommercialLedger' in p
 
 

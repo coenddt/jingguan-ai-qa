@@ -7,8 +7,7 @@
 - qa.py            问数业务（数据源/预置热问/结果加工口径）
 - query_policy.py  查询安全与执行策略（守卫白名单/行数上限/执行超时）
 - cache.py         问法缓存参数（相似度权重/阈值/条数）
-- llm.py           LLM 调用参数（超时/温度/重试）
-- prompts.py       提示词模板与示例
+- llm.py           LLM 通用调用参数（超时/默认温度；场景参数见 agent/prompts）
 - voice.py         语音 TTS
 - app_defaults.py  前台应用默认配置（AppConfig）
 """
@@ -16,8 +15,7 @@
 from .app_defaults import APP_CONFIG_DEFAULTS
 from .auth import TOKEN_TTL
 from .cache import FUZZY_MIN_SCORE, FUZZY_TOP_K, SIM_JACCARD_W, SIM_LEV_W
-from .llm import LLM_MAX_RETRIES, LLM_TEMPERATURE, LLM_TIMEOUT
-from .prompts import CONCLUSION_TMPL, FEW_SHOT_MAX, MODEL_JSON_EXAMPLES, RETRY_TMPL, SYSTEM_TMPL
+from .llm import LLM_TEMPERATURE, LLM_TIMEOUT
 from .qa import (
     QA_CHART, QA_CONCLUSION_ROWS, QA_FOLLOW_UPS, QA_HOT_LIMIT, QA_NUMERIC_FIELDS,
     QA_PRESET_HOT, QA_SOURCES, QA_TIME_DIMS, QA_TITLE_MAX,
@@ -35,8 +33,7 @@ __all__ = [
     'QA_TIME_DIMS', 'QA_CHART', 'QA_CONCLUSION_ROWS', 'QA_FOLLOW_UPS',
     'ALLOWED_OPS', 'ALLOWED_MEASURES', 'NUMERIC_TYPES', 'MAX_LIMIT', 'EXEC_TIMEOUT',
     'SIM_JACCARD_W', 'SIM_LEV_W', 'FUZZY_MIN_SCORE', 'FUZZY_TOP_K',
-    'LLM_TIMEOUT', 'LLM_TEMPERATURE', 'LLM_MAX_RETRIES',
-    'SYSTEM_TMPL', 'MODEL_JSON_EXAMPLES', 'FEW_SHOT_MAX', 'RETRY_TMPL', 'CONCLUSION_TMPL',
+    'LLM_TIMEOUT', 'LLM_TEMPERATURE',
     'TTS_API_URL', 'TTS_CLUSTER', 'TTS_VOICE_TYPE', 'TTS_ENCODING', 'TTS_TIMEOUT',
     'TTS_MAX_CHARS', 'TTS_USER_UID',
     'APP_CONFIG_DEFAULTS',

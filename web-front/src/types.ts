@@ -87,6 +87,7 @@ export interface AppConfig {
 export interface ModelItem {
   id: string
   name: string
+  platform: string
   baseUrl: string
   apiKey: string
   modelName: string

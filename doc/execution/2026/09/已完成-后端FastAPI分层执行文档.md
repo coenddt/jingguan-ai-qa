@@ -1,10 +1,17 @@
 # 经管之星·AI问数助手 后端 FastAPI 分层执行文档（mongo-store + MongoDB 适配版）
 
-> 日期：2026-09-03 ｜ 版本：v2.0（由 v1.0 PostgreSQL/SQLAlchemy 版改写）
+> 日期：2026-09-03 ｜ 版本：v2.0（由 v1.0 PostgreSQL/SQLAlchemy 版改写）｜ v2.1（2026-09-04 结构重构修订）
 > 设计依据：`doc/solution/2026/09/已完成-经管之星AI问数助手需求文档.md`
 > 数据层变更：**ORM(SQLAlchemy) + PostgreSQL → mongo-store + MongoDB**
 > 性质：代码执行文档（AI 照此执行后端落地；本文件为执行级设计，改码前需审阅本文件）
 > 底座来源：`server-py/db/mongo_store` + `.trae/skills/mongo-store-py`（复制自个人绘画集，按本项目改造）
+
+> **v2.1 修订说明（2026-09-04 重构后，阅读本文以当前代码为准）**
+> - `server/app/config.py` 单文件 → **`server/app/config/` 包**：`settings.py`（pydantic-settings 读 .env，密钥/连接串）+ 业务常量分文件（auth/cache/llm/prompts/qa/query_policy/server/voice/app_defaults），`__init__.py` 为全工程唯一配置出口
+> - `server/app/models/schema_defs.py` 集中定义 → **`server/app/models/schema/` 按模型分文件**（每模型一个文件，`__init__.py` 汇总 `ALL_SCHEMAS`；公共权限位在 `common.py`）
+> - 底座库 mongo_store **唯一事实源收敛到 `server/app/db/mongo_store`**，原 `server-py` 载体已于 2026-09-04 删除
+> - 新增 `server/app/services/pagination.py` 公共分页函数 `paged_query`，feedback/import/models/qa 日志分页统一为库内分页，异常统一 `BusinessError`
+> - 本文 §5 执行步骤表为历史执行记录（按 v2.0 时点文件名执行），结构与路径以 v2.1 说明和 `.trae/rules/python-structure-rules.md` 为准
 
 ## 0. 变更动因与影响（相对 v1.0）
 
@@ -51,9 +58,9 @@
 | 环境模板          | `server/.env.example`                                | `MONGO_URI/MONGO_DB`、管理员账号、SECRET\_KEY、火山 key 等（**一律占位符，不含真实值**）                                   |
 | 应用入口          | `server/app/__init__.py`                             | 包标记                                                                                                |
 | 启动入口          | `server/app/main.py`                                 | FastAPI 实例、CORS、路由注册、启动时 `init(db)` + 注册 schema + 种子                                               |
-| 配置            | `server/app/config.py`                               | `pydantic-settings` 读 `.env`                                                                       |
+| 配置            | `server/app/config/`（v2.1：原 `config.py` 拆分）    | `settings.py` pydantic-settings 读 `.env` + 业务常量分文件，`__init__.py` 唯一出口          |
 | 数据层入口         | `server/app/database.py`                             | `AsyncIOMotorClient` 建连 + `mongo_store.init(db)`；提供 `get_db()`                                     |
-| **schema 定义** | `server/app/models/schema_defs.py`                   | 14 个核心模型的 mongo-store JSON schema（§4.3；P1 步骤 7.5 增加 QueryExample 后共 15），业务 schema 集中定义              |
+| **schema 定义** | `server/app/models/schema/`（v2.1：原 `schema_defs.py` 拆分） | 每模型一个文件共 15 个的 mongo-store JSON schema（§4.3），`__init__.py` 汇总 `ALL_SCHEMAS` |
 | **schema 注册** | `server/app/models/registry.py`                      | `store.register(...)` 注册全部业务+系统模型；`MODEL_TABLE` 白名单导出                                              |
 | Pydantic 模型   | `server/app/schemas.py`                              | 全部请求/响应 DTO                                                                                        |
 | 认证路由/服务       | `server/app/auth/router.py` `service.py`             | nginx auth\_request + HMAC Cookie 24h（同 v1.0）                                                      |
@@ -82,7 +89,7 @@
 | 需求文档     | 无                            | 不改，后端按其契约实现                                                |
 | 前端/nginx | 另文档                          | 联调时对接                                                      |
 
-> 说明：mongo-store 库本文件统一放 `server/app/db/`（跟随后端工程），便于打包部署；skill 已落地到 `.trae/skills/mongo-store-py`，二者为同一底座的两份载体。
+> 说明：mongo-store 库本文件统一放 `server/app/db/`（跟随后端工程），便于打包部署；skill 已落地到 `.trae/skills/mongo-store-py`。**v2.1 更新：底座唯一事实源已收敛到 `server/app/db/mongo_store`，原 server-py 载体已删除（2026-09-04）。**
 
 ### 3.3 删除清单
 
@@ -94,24 +101,31 @@
 
 ## 4. 详细执行契约（代码优先）
 
-### 4.1 后端目录结构
+### 4.1 后端目录结构（v2.1，对齐 2026-09-04 重构后实际结构）
 
 ```
 server/
 ├── requirements.txt
 ├── .env.example
 └── app/
-    ├── main.py  config.py  database.py  schemas.py
-    ├── db/mongo_store/            # 复制自 server-py/db/mongo_store（按本项目改造）
-    ├── models/  schema_defs.py  registry.py
+    ├── main.py                        # 仅组装：实例/CORS/路由注册/启动事件
+    ├── config/                        # 配置中心（__init__.py 唯一出口）
+    │   ├── settings.py                #   pydantic-settings 读 .env
+    │   └── auth.py cache.py llm.py prompts.py qa.py query_policy.py server.py voice.py app_defaults.py
+    ├── database.py                    # 建连 + init(db) + get_db()
+    ├── schemas.py
+    ├── db/mongo_store/                # 底座库唯一事实源（v2.1：server-py 载体已删除）
+    ├── models/
+    │   ├── schema/                    # 每模型一个文件（15 个）+ common.py 公共权限位，__init__.py 汇总 ALL_SCHEMAS
+    │   └── registry.py                # register_all() 注册 + MODEL_TABLE/BUSINESS_MODELS 白名单导出
     ├── auth/  router.py  service.py
     ├── routers/  qa.py  config.py  models_mgr.py  feedback.py  import_data.py  tts.py
-    ├── services/  qa_service.py  llm_client.py  query_guard.py  query_executor.py  tt_service.py
+    ├── services/  qa_service.py  llm_client.py  query_guard.py  query_executor.py  query_cache.py  pagination.py  tt_service.py
     ├── agent/  schema_registry.py  prompt_builder.py  step_tracker.py
-    └── seed/  generate_data.py
+    └── seed/  dim_defs.py  generate_data.py
 ```
 
-### 4.2 配置 `.env`（`config.py` 读取）
+### 4.2 配置 `.env`（`config/settings.py` 读取）
 
 ```dotenv
 # .env.example（真实值仅存服务器侧 .env，不入 git）

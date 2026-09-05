@@ -13,6 +13,7 @@ import AiStatsGrid from './AiStatsGrid'
 import AiCardFooter from './AiCardFooter'
 import AiFollowUps from './AiFollowUps'
 import AiFeedbackModal from './AiFeedbackModal'
+import ClarifyForm from './ClarifyForm'
 import { Module, BlkPending, BlkEmpty } from './qaBlocks'
 
 // ECharts 按需分包：仅当回复含图表时才加载图表 chunk
@@ -53,14 +54,16 @@ export default function AiCard({ resp, question, streaming, createdAt }: Props) 
   const hasChart = !streaming || 'chart' in resp
   const hasText = !streaming || 'text' in resp
 
-  // 条件不足澄清卡：不渲染完整报告块
+  // 条件不足澄清卡：字符串=老文本卡；对象=结构化澄清表单（不渲染完整报告块）
   if (resp.clarify) {
     return (
       <div className="qa-ai-msg">
         <div className="qa-ai-card">
           <div className="qa-ai-avatar" style={{ marginBottom: 12 }}><i className="fas fa-robot" /></div>
           <div className="mod-body">
-            <div className="dot-li">{resp.clarify}</div>
+            {typeof resp.clarify === 'string'
+              ? <div className="dot-li">{resp.clarify}</div>
+              : <ClarifyForm form={resp.clarify} />}
           </div>
         </div>
       </div>

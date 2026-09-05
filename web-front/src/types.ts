@@ -85,9 +85,26 @@ export interface QaAskResp {
   row_count?: number
   /** 问数失败时的错误详情（含步骤/耗时），成功时无此字段 */
   error?: string
-  /** 条件不足澄清追问文案；存在时表示该条为澄清而非完整回答 */
-  clarify?: string
+  /** 条件不足澄清：string=纯文本（老会话/软门回退）；ClarifyForm=结构化澄清表单 */
+  clarify?: string | ClarifyForm
   meta: QaAskMeta
+}
+
+/** 澄清表单字段：key 为查询条件 topic 键，type 决定控件形态 */
+export interface ClarifyField {
+  key: string
+  label: string
+  type: 'radio' | 'checkbox' | 'select' | 'input'
+  required?: boolean
+  options?: string[]
+  placeholder?: string
+}
+
+/** 条件不足澄清表单：用户补全参数后由前端拼成完整问题重问 */
+export interface ClarifyForm {
+  text: string
+  question: string
+  fields: ClarifyField[]
 }
 
 export interface SessionItem {

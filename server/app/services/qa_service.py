@@ -11,6 +11,7 @@ import traceback
 from typing import cast
 
 from app.agent.prompts import scenario_params
+from app.agent.schema_registry import DIM_ENUMS
 from app.agent.step_tracker import StepTracker
 from app.config import (
     MAX_LIMIT,
@@ -38,7 +39,7 @@ from app.services import (
     query_executor,
 )
 from app.services.json_schema_shell import ShellError
-from app.services.query_clarify import completeness_issues
+from app.services.query_clarify import build_clarify_fields, completeness_issues
 from app.services.query_guard import GuardError, measure_key, verify
 
 
@@ -140,15 +141,18 @@ def _log_step(tracker: StepTracker, idx: int) -> None:
 
 
 async def _build_clarify_resp(session: dict, tracker: StepTracker, model_conf: dict,
-                              t0: float, tokens: int, clarify_text: str) -> dict:
+                              t0: float, tokens: int, clarify) -> dict:
+    """clarify: str 纯文本（老会话/软门回退）| dict{'text','question','fields'} 结构化澄清表单。
+    content 落库取 text，aiMeta 携带完整 clarify 对象。"""
+    text = clarify if isinstance(clarify, str) else clarify['text']
     return {
         'session_id': session['_id'],
         'steps': tracker.out(),
         'findings': [], 'columns': [], 'rows': [],
         'stats': {'count': 0, 'avg': 0, 'max': 0, 'max_of': '-', 'min': 0, 'min_of': '-'},
         'chart': None,
-        'text': clarify_text, 'follow_ups': [],
-        'clarify': clarify_text,
+        'text': text, 'follow_ups': [],
+        'clarify': clarify,
         'query_source': None, 'truncated': False, 'row_count': 0,
         'meta': {
             'elapsed_s': round(time.monotonic() - t0, 2), 'tokens': tokens,
@@ -219,14 +223,24 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
             intent_q: str | None = None
             try:
                 intent, _ret = await llm_client.invoke('intent_gate', {'question': question}, model_conf)
+                if not isinstance(intent, dict):
+                    intent = {}
                 if intent.get('need_more_info'):
                     intent_q = intent.get('question') or ''
-            except Exception:
+            except Exception:  # noqa: BLE001  # 意图门软门：异常不阻断，直接走 query_gen
                 intent_q = None
             if intent_q:
+                if not isinstance(intent, dict):  # mypy 收窄（运行时 intent_q 非空即已归一）
+                    intent = {}
                 tracker.done(1, f'问题条件不足，已追问澄清：{intent_q}')
                 yield _step_ev(tracker, 1)
-                resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, intent_q)
+                # A 门结构化表单：dimensions 白名单过滤；LLM 未给/给非法键 → 通用维全集兜底（仍软门）
+                dims = [d for d in (intent.get('dimensions') or []) if d in DIM_ENUMS]
+                if not dims:
+                    dims = list(DIM_ENUMS)
+                form = {'text': intent_q, 'question': question,
+                        'fields': build_clarify_fields(dims, None)}
+                resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, form)
                 await _save_messages(session, question, resp, user_name)
                 saved = True
                 yield {'type': 'done', 'data': resp}
@@ -302,9 +316,11 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                         checked = verify(cast(dict, q))
                         issues = completeness_issues(checked)
                         if issues is not None:   # —— B：生成后完整度校验（硬门）——
-                            tracker.done(2, f'查询缺少必要条件，已追问澄清：{issues}')
+                            issues_text = issues.get('text', '问题条件不足，请补充查询条件')
+                            tracker.done(2, f'查询缺少必要条件，已追问澄清：{issues_text}')
                             yield _step_ev(tracker, 2)
-                            resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, issues)
+                            form = {'text': issues_text, 'question': question, 'fields': issues['fields']}
+                            resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, form)
                             await _save_messages(session, question, resp, user_name)
                             saved = True
                             yield {'type': 'done', 'data': resp}

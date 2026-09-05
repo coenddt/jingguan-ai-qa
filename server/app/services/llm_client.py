@@ -14,11 +14,31 @@ import httpx
 
 from app.agent.prompts import build_messages, scenario_params
 from app.config import LLM_TEMPERATURE, LLM_TIMEOUT, cfg
+from app.services import json_schema_shell
 
 PLATFORM_PRESETS = {
     'deepseek': {'name': 'DeepSeek', 'base_url': 'https://api.deepseek.com/v1'},
     'volcengine': {'name': '火山引擎方舟', 'base_url': 'https://ark.cn-beijing.volces.com/api/v3'},
 }
+
+# 共享连接池：复用一个 keep-alive 客户端，避免每次调用新建 TCP+TLS 连接
+# （预热/候选并发/结论每次调用都受益；httpx.AsyncClient 天然支持并发复用）
+_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(timeout=LLM_TIMEOUT)
+    return _client
+
+
+async def aclose() -> None:
+    """应用退出时关闭共享客户端（由 main lifespan 钩子调用）"""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
 
 
 def resolve_base_url(platform: str, base_url: str | None = None) -> str:
@@ -31,7 +51,8 @@ def resolve_base_url(platform: str, base_url: str | None = None) -> str:
 
 async def chat(messages: list[dict], base_url: str | None = None,
                api_key: str | None = None, model: str | None = None,
-               temperature: float = LLM_TEMPERATURE, max_tokens: int | None = None) -> dict:
+               temperature: float = LLM_TEMPERATURE, max_tokens: int | None = None,
+               thinking: dict | None = None) -> dict:
     url = (base_url or cfg.LLM_BASE_URL).rstrip('/') + '/chat/completions'
     headers = {'Authorization': f'Bearer {api_key or cfg.LLM_API_KEY}'}
     body = {
@@ -41,12 +62,13 @@ async def chat(messages: list[dict], base_url: str | None = None,
     }
     if max_tokens is not None:
         body['max_tokens'] = max_tokens  # 预热等极短输出场景限制生成长度，少烧 token
+    if thinking is not None:
+        body['thinking'] = thinking  # 显式关思考：思考 token 计入 max_tokens，不关则封顶必截断（实测 ~500 token 思考）
     t0 = time.monotonic()
-    async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
-        resp = await client.post(url, json=body, headers=headers)
-        if resp.status_code != 200:
-            raise RuntimeError(f'LLM 请求失败 {resp.status_code}: {resp.text[:200]}')
-        data = resp.json()
+    resp = await _get_client().post(url, json=body, headers=headers)
+    if resp.status_code != 200:
+        raise RuntimeError(f'LLM 请求失败 {resp.status_code}: {resp.text[:200]}')
+    data = resp.json()
     content = data['choices'][0]['message']['content']
     usage = data.get('usage', {}) or {}
     # 前缀缓存命中/token（DeepSeek 与 火山方舟均返回；支持不了的平台为 0，不影响主流程）
@@ -78,14 +100,19 @@ def extract_json(text: str) -> dict:
 async def invoke(scenario_id: str, variables: dict, model_conf: dict) -> tuple[dict | str, dict]:
     """场景化通用调用（平台 → 模型 → 场景）：
     提示词与参数来自 agent/prompts 注册表，平台/模型来自 AiModel 配置。
+    JSON Schema 壳在唯一 LLM 出口做浅层挂载：入口注入 schema、出口结构校验（失败抛 ShellError）。
     返回 (json 场景为解析后的对象，否则为原文, meta)。"""
     params = scenario_params(scenario_id)
-    messages = build_messages(scenario_id, variables)
+    messages = json_schema_shell.attach_schema(build_messages(scenario_id, variables), scenario_id)
     ret = await chat(
         messages,
         base_url=resolve_base_url(model_conf['platform'], model_conf.get('baseUrl')),
         api_key=model_conf.get('apiKey'),
         model=model_conf.get('modelName'),
         temperature=params['temperature'],
+        max_tokens=params.get('max_tokens'),
+        thinking=params.get('thinking'),
     )
-    return (extract_json(ret['content']) if params['json'] else ret['content']), ret
+    if params['json']:
+        return json_schema_shell.validate(extract_json(ret['content']), scenario_id), ret
+    return ret['content'], ret

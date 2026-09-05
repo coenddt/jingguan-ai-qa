@@ -19,7 +19,8 @@ from app.config import (
 from app.db.mongo_store import store
 from app.errors import BusinessError
 from app.log import get_request_id, log
-from app.services import llm_client, query_cache, query_candidate, query_executor
+from app.services import auto_feedback, llm_client, query_cache, query_candidate, query_executor
+from app.services.json_schema_shell import ShellError
 from app.services.query_guard import GuardError, measure_key, verify
 
 
@@ -162,8 +163,16 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                 yield _step_ev(tracker, 1)
                 _log_step(tracker, 1)
                 log('info', 'ask_tier', tier='exact', candidates=0, concurrency=0, best_score='-')
-            except GuardError:
-                pass  # 缓存校验不通过一律丢弃回退 LLM，绝不跳过守卫
+            except GuardError as e:
+                # 缓存命中却被守卫拦下 → 静默失守点：立即自动反馈（缓存模板与 schema 脱节，是上一步病灶）
+                await auto_feedback.record(
+                    category='guard',
+                    trigger_point='cache_exact_hit_guard',
+                    reason=str(e),
+                    layer='内层防护罩-守卫校验拦截',
+                    upstream='精确查询缓存模板(QaMessage.aiMeta)已不通过 query_guard.verify——模板被污染或与 schema 脱节',
+                    fix_hint='拿 queryRaw 与 reason 定位 query_cache.exact_hit 命中逻辑，核查该模板为何越界；修复缓存模板或 schema 后回放验证',
+                    question=question, query_raw=ex['template'])
 
         if rows is None:
             few = await query_cache.top_k_fuzzy(question)
@@ -241,8 +250,18 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                         used_query = checked
                         retries = attempt + 1
                         break
-                    except (GuardError, BusinessError, RuntimeError, TimeoutError) as e:
+                    except (GuardError, ShellError, BusinessError, RuntimeError, TimeoutError) as e:
                         last_err = str(e)
+                        if isinstance(e, ShellError):
+                            # 结构层拦截被反复触发 → 自动反馈（允许被拦，禁止静默）
+                            await auto_feedback.record(
+                                category='shell',
+                                trigger_point='query_gen_shell_validation',
+                                reason=last_err,
+                                layer='外置JSONSchema壳-结构校验拦截',
+                                upstream='LLM 产出结构越界，未达 query_guard',
+                                fix_hint='按 reason 定位结构偏差并回传重试；必要时评估修正 OUTPUT_SCHEMAS 后回放验证',
+                                question=question, query_raw=base_bad)
                         if attempt == q_params['retries'] - 1:
                             raise BusinessError(f'查询生成失败：{last_err}', 422)
                         tracker.fail(2, f'第{attempt + 1}次串行回传校验/执行未通过：{last_err}，已回传 LLM 重试')
@@ -299,7 +318,8 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
         yield {'type': 'block', 'name': 'chart', 'data': chart}
 
         yield _step_running(4)
-        sample = rows[:QA_CONCLUSION_ROWS]
+        sample = [{k: v for k, v in r.items() if k != '_id'}
+                  for r in rows[:QA_CONCLUSION_ROWS]]
         conclusion, ret2 = await llm_client.invoke(
             'conclusion', {'question': question, 'query': used_query, 'rows': sample}, model_conf)
         tokens += ret2['total_tokens']

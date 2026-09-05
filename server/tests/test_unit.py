@@ -11,7 +11,10 @@ from app.config import SIM_JACCARD_W, SIM_LEV_W
 from app.services.query_cache import _bigrams, _levenshtein, _score, qnorm
 from app.services.query_executor import _build_pipeline
 from app.services.query_candidate import pick_checked
+from app.services.auto_feedback import record
+from app.services.json_schema_shell import ShellError, attach_schema, validate
 from app.services.query_guard import GuardError, verify
+from app.db.mongo_store import store
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -203,3 +206,86 @@ def test_auth_token_malformed():
     assert verify_token('abc.def') is None  # 签名不符
     bad = base64.urlsafe_b64encode(b'not-json').decode() + '.x'
     assert verify_token(bad) is None  # payload 非 JSON
+
+
+# ---------- JSON Schema 壳（纯函数） ----------
+
+def test_validate_unregistered_passthrough():
+    assert validate({'a': 1}, 'no_such_scenario') == {'a': 1}
+
+
+def test_attach_schema_registered():
+    out = attach_schema([{'role': 'user', 'content': 'hi'}], 'query_gen')
+    assert len(out) == 2 and out[1]['role'] == 'system' and 'mode' in out[1]['content']
+
+
+def test_attach_schema_unregistered():
+    msgs = [{'role': 'user', 'content': 'hi'}]
+    assert attach_schema(msgs, 'nope') is msgs
+
+
+def test_validate_ok():
+    p = {'mode': 'query', 'model': 'CommercialLedger', 'limit': 50,
+         'measures': [{'op': 'count', 'field': ''}]}
+    assert validate(p, 'query_gen') == p
+
+
+def test_validate_missing_required():
+    with pytest.raises(ShellError):  # model 必填缺失
+        validate({'mode': 'query'}, 'query_gen')
+
+
+def test_validate_type_mismatch():
+    with pytest.raises(ShellError):
+        validate({'mode': 123, 'model': 'x'}, 'query_gen')
+
+
+def test_validate_enum_fail():
+    with pytest.raises(ShellError):
+        validate({'mode': 'raw', 'model': 'x'}, 'query_gen')
+
+
+def test_validate_extra_key():
+    with pytest.raises(ShellError):
+        validate({'mode': 'query', 'model': 'x', 'hack': 1}, 'query_gen')
+
+
+def test_validate_integer_excludes_bool():
+    with pytest.raises(ShellError):  # bool 非 integer
+        validate({'mode': 'query', 'model': 'x', 'limit': True}, 'query_gen')
+
+
+def test_validate_non_object():
+    with pytest.raises(ShellError):
+        validate(['not', 'obj'], 'query_gen')
+
+
+# ---------- 自动反馈（mock store） ----------
+
+def test_auto_feedback_ok(monkeypatch):
+    import asyncio
+    captured = {}
+    async def fake_insert(schema, doc):
+        captured['doc'] = doc
+        return {'_id': '1'}
+    async def fake_rai(fn):
+        return await fn()
+    monkeypatch.setattr(store, 'insert', fake_insert)
+    monkeypatch.setattr(store, 'run_as_internal', fake_rai)
+    asyncio.run(record(category='guard', trigger_point='tp', reason='r', layer='l',
+                       upstream='up', fix_hint='fh', question='q', query_raw={'m': 1}))
+    assert captured['doc']['category'] == 'guard'
+    assert captured['doc']['queryRaw'] != ''  # 有 query_raw → 序列化
+
+
+def test_auto_feedback_swallow_failure(monkeypatch):
+    import asyncio
+    async def fake_bad(*a, **k):
+        raise RuntimeError('boom')
+    async def fake_rai(fn):
+        return await fn()
+    monkeypatch.setattr(store, 'insert', fake_bad)
+    monkeypatch.setattr(store, 'run_as_internal', fake_rai)
+    # 告警自身失败不能击穿调用方 → 不抛
+    asyncio.run(record(category='fallback', trigger_point='tp', reason='r',
+                       layer='l', upstream='up', fix_hint='fh'))

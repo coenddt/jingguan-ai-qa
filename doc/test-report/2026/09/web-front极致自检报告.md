@@ -25,7 +25,7 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 |------|------|------|------|
 | 功能正确性 | 4 | 静态走查 + 真实浏览器 | 登录→/qa 全流程真实浏览器走通，SSE 处理完整、三态齐全；仍无 E2E 自动化扣 1 |
 | 性能 | 4 | 云端真实浏览器实测 | LCP/FCP≈1032ms、load≈53ms、CLS=0；INP 受浏览器缓存污染未取到干净样本 |
-| 安全 | 4 | 全仓扫描 | 0 dangerHTML/eval；DOMPurify 全去标签；未跑 npm audit |
+| 安全 | 4 | 全仓扫描 + npm audit | 0 dangerHTML/eval；DOMPurify 全去标签；audit 3 moderate 无高危(见遗留) |
 | 健壮性 | 4 | 代码走查 | ErrorBoundary+路由复位；AbortController；无断网降级 |
 | 代码质量 | 4 | tsc --noEmit | 0 error、0 any；缺 ESLint、内联样式多扣 1 |
 | 可测试性 | 4 | vitest run | 22/22 通过，核心纯逻辑 + 列表 hook |
@@ -82,7 +82,8 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 | 可访问性 | 空态/图标文字对比度过低(#6B8CAE) | /qa serious 色对比 | 已修复→#2F6D9F 达 AA，axe 归零 |
 | P1 | 未配置 ESLint | 代码质量问题无法自动拦截 | 接入 eslint + 卡口 |
 | P1 | 全仓 105 处内联 `style={{}}` | 偏离 daisyUI/Tailwind 规范 | 逐步收敛到类名 |
-| P2 | INP 无多次交互样本 | 可访问性/体验量化不足 | 弱网+多次交互再测 |
+| P1 | 依赖 3 个 moderate 漏洞 | echarts XSS(需≥6.1)、react-router 重定向/注入(需≥7.18) | 属破坏性大版本升级，列期随重构升级并对齐 |
+| P2 | INP 无干净样本 | 本环境浏览器 agent 缓存污染导致事件计数不可信 | 走部署实例上的 Lighthouse/PageSpeed CI(限速+多次交互) 采集 |
 | P2 | 无断网降级/失败重试 | 弱网体验一般 | 请求层加幂等重试 |
 | P2 | 生产构建时有旧 vendor chunk 缓存残留 | 极少数环境可能闪 init 错 | 强缓存/清 CDN |
 

@@ -15,6 +15,7 @@ from app.services.auto_feedback import record
 from app.services.json_schema_shell import ShellError, attach_schema, validate
 from app.services.query_guard import GuardError, verify
 from app.db.mongo_store import store
+from app.services import llm_client
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -289,3 +290,83 @@ def test_auto_feedback_swallow_failure(monkeypatch):
     # 告警自身失败不能击穿调用方 → 不抛
     asyncio.run(record(category='fallback', trigger_point='tp', reason='r',
                        layer='l', upstream='up', fix_hint='fh'))
+
+
+# ---------- llm_client 纯逻辑 + mock ----------
+
+def test_resolve_base_url_preset():
+    assert llm_client.resolve_base_url('deepseek') == 'https://api.deepseek.com/v1'
+
+
+def test_resolve_base_url_unknown_platform():
+    with pytest.raises(ValueError):
+        llm_client.resolve_base_url('no_such_platform')
+
+
+def test_resolve_base_url_custom_same_host_ok():
+    out = llm_client.resolve_base_url('deepseek', 'https://api.deepseek.com/v2')
+    assert out == 'https://api.deepseek.com/v2'
+
+
+def test_resolve_base_url_evil_host_rejected():
+    with pytest.raises(ValueError):
+        llm_client.resolve_base_url('deepseek', 'https://evil.com/v1')
+    with pytest.raises(ValueError):  # 非 http(s) scheme
+        llm_client.resolve_base_url('deepseek', 'file:///etc/passwd')
+
+
+def test_extract_json_fenced():
+    assert llm_client.extract_json('```json\n{"a": 1}\n```') == {'a': 1}
+
+
+def test_extract_json_bare_with_trailing():
+    assert llm_client.extract_json('{"a": 1} trailing text') == {'a': 1}
+
+
+def test_extract_json_missing():
+    with pytest.raises(ValueError):
+        llm_client.extract_json('没有任何 JSON 的输出')
+
+
+def test_resolve_reasoning_mapped():
+    assert llm_client._resolve_reasoning('deepseek', 'disabled') == {'type': 'disabled'}
+
+
+def test_resolve_reasoning_empty_flag():
+    assert llm_client._resolve_reasoning('deepseek', '') is None
+
+
+def test_resolve_reasoning_unmapped():
+    assert llm_client._resolve_reasoning('deepseek', 'weird_flag') is None  # 落 warn 告警
+
+
+def test_chat_success(monkeypatch):
+    import asyncio
+    class FakeResp:
+        status_code = 200
+        text = 'ok'
+        def json(self):
+            return {'choices': [{'message': {'content': 'hi'}}],
+                    'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'total_tokens': 15}}
+    class FakeClient:
+        async def post(self, *a, **k):
+            return FakeResp()
+    monkeypatch.setattr(llm_client, '_client', FakeClient())
+    out = asyncio.run(llm_client.chat([{'role': 'user', 'content': 'x'}],
+                                      base_url='https://api.deepseek.com/v1', api_key='k', model='m'))
+    assert out['content'] == 'hi' and out['total_tokens'] == 15
+
+
+def test_chat_non_200(monkeypatch):
+    import asyncio
+    class FakeResp:
+        status_code = 500
+        text = 'boom'
+        def json(self):
+            return {}
+    class FakeClient:
+        async def post(self, *a, **k):
+            return FakeResp()
+    monkeypatch.setattr(llm_client, '_client', FakeClient())
+    with pytest.raises(RuntimeError):
+        asyncio.run(llm_client.chat([], base_url='https://api.deepseek.com/v1', api_key='k', model='m'))

@@ -16,9 +16,11 @@ from app.services.json_schema_shell import ShellError, attach_schema, validate
 from app.services.query_guard import GuardError, verify
 from app.db.mongo_store import store
 from app.services import llm_client
+from app.services import query_cache, query_candidate, query_executor, query_guard
+from app.services.llm_client import chat, resolve_base_url
 from app.services.qa_service import (
     _active_model, _build_chart, _build_findings, _build_stats,
-    _ensure_session, _round_rows)
+    _ensure_session, _round_rows, ask_stream)
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -499,3 +501,143 @@ def test_ensure_session_create(monkeypatch):
     monkeypatch.setattr(store, 'insert', fake_insert)
     s = asyncio.run(_ensure_session(None, '新问题'))
     assert s['_id'] == 'new' and created[0][0] == 'QaSession'
+
+
+# ---------- ask_stream 全链路 mock（SSE 事件流） ----------
+
+def _ask_stream_mocks(monkeypatch, question='上月收入多少', rows=None, few=None):
+    import asyncio
+    from app.db.mongo_store import store as st
+    if rows is None:
+        rows = [{'unit': 'a', 'income': 100}]
+    q = {'model': 'CommercialLedger', 'mode': 'list', 'condition': {},
+         'fields': ['unit', 'income'], 'sort': {}, 'limit': 50}
+
+    async def fake_run(checked):
+        return (rows, False)
+    async def fake_hit(question_):
+        return None
+    async def fake_few(question_):
+        return few or []
+    async def fake_gen(question_, f, conf, n, conc, **k):
+        return ([(q, {'ok': True, 'tokens': 5, 'cache_hit': 0, 'cache_miss': 0})], None)
+    async def fake_invoke(scenario, vars_, conf):
+        if scenario == 'conclusion':
+            return ({'text': '结论', 'follow_ups': ['追问1', '追问2']},
+                    {'total_tokens': 12, 'elapsed_s': 0.1,
+                     'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+        return ({}, {'total_tokens': 3, 'elapsed_s': 0.1,
+                     'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+    async def fake_q1(gql, params=None):
+        return {'enabled': True, 'name': 'M', 'platform': 'deepseek', 'baseUrl': '',
+                'apiKey': 'k', 'modelName': 'deepseek-chat'}
+    async def fake_q(gql, params=None):
+        return []
+    async def fake_insert(schema, data):
+        return {'_id': 'x'}
+    async def fake_count(schema, cond=None):
+        return 1
+    async def fake_update(*a, **k):
+        return {'_id': 'x'}
+    async def fake_upsert(*a, **k):
+        return None
+
+    monkeypatch.setattr(query_guard, 'verify', lambda x: x)
+    monkeypatch.setattr(query_executor, 'run', fake_run)
+    monkeypatch.setattr(query_cache, 'exact_hit', fake_hit)
+    monkeypatch.setattr(query_cache, 'top_k_fuzzy', fake_few)
+    monkeypatch.setattr(query_cache, 'upsert', fake_upsert)
+    monkeypatch.setattr(query_candidate, 'generate_candidates', fake_gen)
+    monkeypatch.setattr(query_candidate, 'pick_checked',
+                        lambda cands: ([q], [{'idx': 0, 'status': 'pass'}]))
+    monkeypatch.setattr(llm_client, 'invoke', fake_invoke)
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    monkeypatch.setattr(st, 'query', fake_q)
+    monkeypatch.setattr(st, 'insert', fake_insert)
+    monkeypatch.setattr(st, 'count', fake_count)
+    monkeypatch.setattr(st, 'update', fake_update)
+    return question, rows
+
+
+def test_ask_stream_success_cold(monkeypatch):
+    import asyncio
+    question, _ = _ask_stream_mocks(monkeypatch)  # few=[] → cold tier
+    events = []
+    async def collect():
+        async for ev in ask_stream(question, None, [], '管理员'):
+            events.append(ev)
+    asyncio.run(collect())
+    types = [e['type'] for e in events]
+    assert 'error' not in types, events[-1] if types else 'no events'
+    assert 'done' in types
+    done = next(e['data'] for e in events if e['type'] == 'done')
+    assert done['row_count'] == 1 and done['query_source'] == 'llm'
+    assert [e['type'] for e in events].count('step') >= 4  # 0,1,2,3,4 逐步事件
+
+
+def test_ask_stream_success_warm(monkeypatch):
+    import asyncio
+    from app.config import QA_HOT_FUZZY_SCORE
+    question, _ = _ask_stream_mocks(
+        monkeypatch, few=[{'question': 'q', 'score': QA_HOT_FUZZY_SCORE + 0.1}])
+    events = []
+    async def collect():
+        async for ev in ask_stream(question, None, [], '管理员'):
+            events.append(ev)
+    asyncio.run(collect())
+    types = [e['type'] for e in events]
+    assert 'error' not in types and 'done' in types
+
+
+def test_ask_stream_exact_cache_hit(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    q = {'model': 'CommercialLedger', 'mode': 'list', 'condition': {},
+         'fields': ['unit', 'income'], 'sort': {}, 'limit': 50}
+    async def fake_hit(question_):
+        return {'template': q, 'answer': '旧答案'}
+    async def fake_run(checked):
+        return ([{'unit': 'a', 'income': 100}], False)
+    async def fake_q1(gql, params=None):
+        return {'enabled': True, 'name': 'M', 'platform': 'deepseek',
+                'baseUrl': '', 'apiKey': 'k', 'modelName': 'm'}
+    async def fake_upsert(*a, **k):
+        return None
+    async def fake_insert(schema, data):
+        return {'_id': 'x'}
+    async def fake_count(schema, cond=None):
+        return 1
+    async def fake_update(*a, **k):
+        return {'_id': 'x'}
+    monkeypatch.setattr(query_guard, 'verify', lambda x: x)
+    monkeypatch.setattr(query_executor, 'run', fake_run)
+    monkeypatch.setattr(query_cache, 'exact_hit', fake_hit)
+    monkeypatch.setattr(query_cache, 'top_k_fuzzy', lambda q_: [])
+    monkeypatch.setattr(query_cache, 'upsert', fake_upsert)
+    async def fake_gen(question_, f, conf, n, conc, **k):
+        return ([(q, {'ok': True, 'tokens': 5, 'cache_hit': 0, 'cache_miss': 0})], None)
+    monkeypatch.setattr(query_candidate, 'generate_candidates', fake_gen)
+    monkeypatch.setattr(query_candidate, 'pick_checked',
+                        lambda cands: ([q], [{'idx': 0, 'status': 'pass'}]))
+    async def fake_invoke(scenario, v, c):
+        return ({'text': 't', 'follow_ups': []},
+                {'total_tokens': 5, 'elapsed_s': 0.1,
+                 'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+    monkeypatch.setattr(llm_client, 'invoke', fake_invoke)
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    async def fake_goal_query(*a, **k):
+        return []
+    monkeypatch.setattr(st, 'query', fake_goal_query)
+    monkeypatch.setattr(st, 'insert', fake_insert)
+    monkeypatch.setattr(st, 'count', fake_count)
+    monkeypatch.setattr(st, 'update', fake_update)
+    events = []
+    async def collect():
+        async for ev in ask_stream('同款问法', None, [], '管理员'):
+            events.append(ev)
+    asyncio.run(collect())
+    errs = [e for e in events if e['type'] == 'error']
+    assert not errs, errs
+    assert 'done' in [e['type'] for e in events]
+    done = next(e['data'] for e in events if e['type'] == 'done')
+    assert done['query_source'] == 'exact_cache'

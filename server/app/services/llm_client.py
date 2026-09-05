@@ -31,7 +31,7 @@ def resolve_base_url(platform: str, base_url: str | None = None) -> str:
 
 async def chat(messages: list[dict], base_url: str | None = None,
                api_key: str | None = None, model: str | None = None,
-               temperature: float = LLM_TEMPERATURE) -> dict:
+               temperature: float = LLM_TEMPERATURE, max_tokens: int | None = None) -> dict:
     url = (base_url or cfg.LLM_BASE_URL).rstrip('/') + '/chat/completions'
     headers = {'Authorization': f'Bearer {api_key or cfg.LLM_API_KEY}'}
     body = {
@@ -39,6 +39,8 @@ async def chat(messages: list[dict], base_url: str | None = None,
         'messages': messages,
         'temperature': temperature,
     }
+    if max_tokens is not None:
+        body['max_tokens'] = max_tokens  # 预热等极短输出场景限制生成长度，少烧 token
     t0 = time.monotonic()
     async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
         resp = await client.post(url, json=body, headers=headers)
@@ -47,12 +49,18 @@ async def chat(messages: list[dict], base_url: str | None = None,
         data = resp.json()
     content = data['choices'][0]['message']['content']
     usage = data.get('usage', {}) or {}
+    # 前缀缓存命中/token（DeepSeek 与 火山方舟均返回；支持不了的平台为 0，不影响主流程）
+    cache_hit = usage.get('prompt_cache_hit_tokens') or 0
+    cache_miss = usage.get('prompt_cache_miss_tokens') or 0
+    prompt_tokens = usage.get('prompt_tokens', 0) or (cache_hit + cache_miss or 0)
     return {
         'content': content,
-        'prompt_tokens': usage.get('prompt_tokens', 0),
+        'prompt_tokens': prompt_tokens,
         'completion_tokens': usage.get('completion_tokens', 0),
-        'total_tokens': usage.get('total_tokens', 0),
+        'total_tokens': usage.get('total_tokens', 0) or (prompt_tokens + usage.get('completion_tokens', 0) or 0),
         'elapsed_s': round(time.monotonic() - t0, 2),
+        'cache_hit_tokens': cache_hit,
+        'cache_miss_tokens': cache_miss,
     }
 
 

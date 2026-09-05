@@ -43,6 +43,28 @@ def test_guard_reject_dangerous_op():
         verify({'model': 'CommercialLedger', 'condition': {'$where': '1==1'}})
 
 
+def test_guard_reject_dangerous_op_deep_nested():
+    # 藏在被白名单操作符值里的危险操作符，全递归校验必须拦下
+    cases = [
+        {'year': {'$gt': {'$lookup': {'from': 'users'}}}},
+        {'industry': {'$in': [{'$expr': {'$function': 'x'}}]}},
+        {'customer': {'$regex': {'$where': '1==1'}}},
+        {'$and': [{'year': 2026}, {'$unionWith': 'users'}]},
+        {'unit': {'$gt': 0, '$or': [{'income': {'$ne': 1}}], '$not': {'year': 1}}},
+    ]
+    for cond in cases:
+        with pytest.raises(GuardError, msg=f'应拒绝: {cond}'):
+            verify({'model': 'CommercialLedger', 'condition': cond})
+
+
+def test_guard_ok_deep_nested_allowed():
+    # 合法的多层嵌套白名单操作符应放行
+    c = verify({'model': 'CommercialLedger',
+                'condition': {'industry': {'$eq': '政企'}, 'year': {'$in': [2025, 2026]}},
+                'fields': ['unit', 'income'], 'sort': {'income': -1}, 'limit': 20})
+    assert c['limit'] == 20
+
+
 def test_guard_reject_unknown_field():
     with pytest.raises(GuardError):
         verify({'model': 'CommercialLedger', 'condition': {'hack': 1}})

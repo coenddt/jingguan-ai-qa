@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.auth.router import router as auth_router
 from app.config import APP_TITLE, CORS_ORIGINS
+from app.log import RequestIdMiddleware, configure_logging
 from app.database import close, connect
 from app.db.mongo_store import store
 from app.errors import BusinessError
@@ -31,7 +32,10 @@ async def lifespan(app: FastAPI):
     await close()
 
 
+configure_logging()
 app = FastAPI(title=APP_TITLE, lifespan=lifespan)
+
+app.add_middleware(RequestIdMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

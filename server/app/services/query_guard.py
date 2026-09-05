@@ -1,6 +1,6 @@
 """AI 查询只读守卫（纯校验，无副作用）：模型/字段/操作符/聚合白名单 + 行数上限"""
 
-from app.config import ALLOWED_MEASURES, ALLOWED_OPS, MAX_LIMIT, NUMERIC_TYPES
+from app.config import ALLOWED_MEASURES, ALLOWED_OPS, DENIED_OPS, MAX_LIMIT, NUMERIC_TYPES
 from app.models.registry import BUSINESS_MODELS, MODEL_TABLE
 
 
@@ -8,20 +8,36 @@ class GuardError(Exception):
     """守卫拒绝（路由层映射 403）"""
 
 
+def _reject_op(k: str, path: str) -> None:
+    """拒绝非法操作符：危险/扩展操作符给明确信息，其余不在白名单一律 403"""
+    if k in DENIED_OPS:
+        raise GuardError(f'条件操作符被禁用: {k}' + (f' @ {path}' if path else ''))
+    if k not in ALLOWED_OPS:
+        raise GuardError(f'条件操作符越界: {k}' + (f' @ {path}' if path else ''))
+
+
 def _walk_condition(cond, fields: set, path: str = '') -> None:
+    """全递归校验条件树：任意深度节点，$ 键限 ALLOWED_OPS 白名单、普通键限 schema 字段白名单。
+
+    默认拒绝——所有命中危险/未知操作符（$where/$lookup/$unionWith/$expr/$function 等）
+    与未知字段的深层写法都会被拦下，杜绝藏在嵌套值里的托管直通。
+    """
     if not isinstance(cond, dict):
-        raise GuardError(f'条件格式错误: {path}')
+        raise GuardError(f'条件格式错误: {path or "root"}')
     for k, v in cond.items():
+        if not isinstance(k, str):
+            raise GuardError(f'条件键类型错误: {k!r}')
         if k.startswith('$'):
-            if k not in ALLOWED_OPS:
-                raise GuardError(f'条件操作符越界: {k}')
-            continue
-        if k not in fields:
-            raise GuardError(f'未知字段: {k}')
+            _reject_op(k, path)
+        elif k not in fields:
+            raise GuardError(f'未知字段: {k}' + (f' @ {path}' if path else ''))
+        # 递归下沉：字典 / 字典数组（覆盖 $gt 等操作符值里再藏操作符的嵌套写法）
         if isinstance(v, dict):
-            for vk in v:
-                if vk.startswith('$') and vk not in ALLOWED_OPS:
-                    raise GuardError(f'条件操作符越界: {vk}')
+            _walk_condition(v, fields, f'{path}.{k}')
+        elif isinstance(v, list):
+            for i, item in enumerate(v):
+                if isinstance(item, dict):
+                    _walk_condition(item, fields, f'{path}.{k}[{i}]')
 
 
 def verify(query: dict) -> dict:

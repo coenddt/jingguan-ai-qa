@@ -12,12 +12,14 @@ import traceback
 from app.agent.prompts import scenario_params
 from app.agent.step_tracker import StepTracker
 from app.config import (
-    MAX_LIMIT, QA_CHART, QA_CONCLUSION_ROWS, QA_FOLLOW_UPS,
-    QA_NUMERIC_FIELDS, QA_SOURCES, QA_TIME_DIMS, QA_TITLE_MAX,
+    MAX_LIMIT, QA_CHART, QA_CONCLUSION_ROWS, QA_FOLLOW_UPS, QA_HOT_FUZZY_SCORE,
+    QA_NUMERIC_FIELDS, QA_PREHEAT_ENABLED, QA_QUERY_CANDIDATES,
+    QA_QUERY_CANDIDATE_CONCURRENCY, QA_SOURCES, QA_TIER, QA_TIME_DIMS, QA_TITLE_MAX,
 )
 from app.db.mongo_store import store
 from app.errors import BusinessError
-from app.services import llm_client, query_cache, query_executor
+from app.log import get_request_id, log
+from app.services import llm_client, query_cache, query_candidate, query_executor
 from app.services.query_guard import GuardError, measure_key, verify
 
 
@@ -109,6 +111,12 @@ def _step_running(idx: int) -> dict:
     return {'type': 'step', 'index': idx, 'status': 'running'}
 
 
+def _log_step(tracker: StepTracker, idx: int) -> None:
+    it = tracker.items[idx]
+    log('info', 'ask_step', index=idx, title=it['title'], elapsed_ms=it['elapsed'],
+        status='done' if it['done'] else 'fail', desc=it['desc'])
+
+
 async def ask_stream(question: str, session_id: str | None, source_keys: list[str],
                      user_name: str = '管理员'):
     """流式问数编排：逐步 yield SSE 事件；逻辑与非流式版一致，异常统一转 error 事件"""
@@ -119,6 +127,8 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
     tokens = 0
     model_conf: dict | None = None
     saved = False
+    log('info', 'ask_start', question=question, sources=n_sources,
+        request_id=get_request_id())
     try:
         # 会话先行：前端尽早挂载消息流；失败（如无启用模型）不会遗留空会话
         session = await _ensure_session(session_id, question)
@@ -127,6 +137,7 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
         yield {'type': 'steps', 'data': [{'title': t} for t in tracker.STEPS]}
         tracker.done(0, f'识别问题意图，在 {n_sources} 个已选数据源分组中确定目标模型')
         yield _step_ev(tracker, 0)
+        _log_step(tracker, 0)
 
         model_conf = await _active_model()
         q_params = scenario_params('query_gen')
@@ -135,6 +146,7 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
         used_query: dict | None = None
         tokens = 0
         query_source = 'llm'            # 精确缓存命中后覆盖为 'exact_cache'
+        query_tier = 'exact'            # 热度分级：exact/warm/cold（阶段三）
         retries = 0                     # LLM 重试轮数（首轮通过为 0）
         query_raw: dict | None = None   # LLM 最后产出的原始查询（verify 前）；缓存命中为 None
 
@@ -148,42 +160,101 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                 query_source = 'exact_cache'
                 tracker.done(1, f'命中精确问法缓存，复用模板：{json.dumps(checked, ensure_ascii=False)}')
                 yield _step_ev(tracker, 1)
+                _log_step(tracker, 1)
+                log('info', 'ask_tier', tier='exact', candidates=0, concurrency=0, best_score='-')
             except GuardError:
                 pass  # 缓存校验不通过一律丢弃回退 LLM，绝不跳过守卫
 
         if rows is None:
             few = await query_cache.top_k_fuzzy(question)
-            q, ret1 = await llm_client.invoke('query_gen', {'question': question, 'few_shots': few}, model_conf)
-            tokens += ret1['total_tokens']
-            query_raw = q
-            tracker.done(1, f'LLM 生成查询：{json.dumps(q, ensure_ascii=False)}')
+            # 阶段三：热度分级——best fuzzy score 命中阈值 → warm(低开销 1 候选) / cold(候选兜底)
+            best_score = few[0]['score'] if few else 0.0
+            query_tier = 'warm' if best_score >= QA_HOT_FUZZY_SCORE else 'cold'
+            tier_cfg = QA_TIER[query_tier]
+            n_cands = max(int(tier_cfg['candidates'] or QA_QUERY_CANDIDATES), 1)
+            conc = max(int(tier_cfg['concurrency'] or QA_QUERY_CANDIDATE_CONCURRENCY), 1)
+            candidates, prime_meta = await query_candidate.generate_candidates(
+                question, few, model_conf, n_cands, conc, preheat=bool(QA_PREHEAT_ENABLED))
+            cache_hit = cache_miss = 0
+            for _, meta in candidates:
+                if meta.get('ok') and meta.get('tokens'):
+                    tokens += int(meta['tokens'])
+                cache_hit += int(meta.get('cache_hit') or 0)
+                cache_miss += int(meta.get('cache_miss') or 0)
+            query_raw = (candidates[0][0]) if candidates and candidates[0][0] is not None else None
+            checked_list, cand_statuses = query_candidate.pick_checked(candidates)
+            log('info', 'ask_tier', tier=query_tier, candidates=n_cands, concurrency=conc,
+                best_score=round(best_score, 3))
+            if prime_meta:
+                log('info', 'ask_preheat', ok=prime_meta.get('ok', False),
+                    elapsed_s=prime_meta.get('elapsed_s'),
+                    cache_hit=prime_meta.get('cache_hit'), cache_miss=prime_meta.get('cache_miss'),
+                    error=prime_meta.get('error', ''))
+            log('info', 'ask_candidates', generated=len(candidates), passed=len(checked_list),
+                cache_hit=cache_hit, cache_miss=cache_miss,
+                statuses=json.dumps(
+                    [{k: s.get(k) for k in ('idx', 'status', 'error') if s.get(k) is not None}
+                     for s in cand_statuses], ensure_ascii=False))
+            tracker.done(1, f'LLM 并行生成 {len(candidates)} 个候选查询，守卫通过 {len(checked_list)} 个，择优执行')
             yield _step_ev(tracker, 1)
+            _log_step(tracker, 1)
 
+            # 择优执行：按候选序尝试执行；全部失败 → 串行错误回传修正重试（原行为兜底）
             yield _step_running(2)
-            for attempt in range(q_params['retries']):
+            last_err = ''
+            for checked in checked_list:
                 try:
-                    checked = verify(q)
-                    tracker.done(2, f'守卫校验通过：模型/字段/操作符均在白名单内，强制行数上限 {MAX_LIMIT}')
-                    yield _step_ev(tracker, 2)
                     rows, truncated = await query_executor.run(checked)
                     used_query = checked
-                    retries = attempt
                     break
                 except (GuardError, BusinessError, RuntimeError, TimeoutError) as e:
+                    rows = None
                     last_err = str(e)
-                    if attempt == q_params['retries'] - 1:
-                        raise BusinessError(f'查询生成失败：{last_err}', 422)
-                    tracker.fail(2, f'第{attempt + 1}次校验/执行未通过：{last_err}，已回传 LLM 重试')
-                    yield _step_ev(tracker, 2)
-                    yield _step_running(2)
-                    q, ret = await llm_client.invoke(
-                        'query_gen', {'question': question, 'bad_query': q, 'error': last_err}, model_conf)
-                    tokens += ret['total_tokens']
-                    query_raw = q  # 始终记录最后一次 LLM 产出
+                    log('info', 'ask_candidate_exec_fail', error=last_err)
+
+            if rows is not None:
+                tracker.done(2, f'守卫校验通过，择优执行取数返回 {len(rows)} 条')
+                yield _step_ev(tracker, 2)
+                _log_step(tracker, 2)
+                retries = 0
+            else:
+                # 全部候选失败 → 串行回传 LLM 修正重试（保留原兜底，保证正确性）
+                base_bad = checked_list[-1] if checked_list else (query_raw or {})
+                for attempt in range(q_params['retries']):
+                    try:
+                        q, ret = await llm_client.invoke(
+                            'query_gen',
+                            {'question': question, 'bad_query': base_bad, 'error': last_err},
+                            model_conf)
+                        tokens += ret['total_tokens']
+                        log('info', 'llm_call', scenario='query_gen_retry', attempt=attempt,
+                            elapsed_s=ret.get('elapsed_s'), tokens=ret.get('total_tokens'),
+                            cache_hit=ret.get('cache_hit_tokens'),
+                            cache_miss=ret.get('cache_miss_tokens'))
+                        base_bad = q  # 供下一轮错误反馈
+                        query_raw = q
+                        checked = verify(q)
+                        tracker.done(2, f'守卫校验通过：模型/字段/操作符均在白名单内，强制行数上限 {MAX_LIMIT}')
+                        yield _step_ev(tracker, 2)
+                        _log_step(tracker, 2)
+                        rows, truncated = await query_executor.run(checked)
+                        used_query = checked
+                        retries = attempt + 1
+                        break
+                    except (GuardError, BusinessError, RuntimeError, TimeoutError) as e:
+                        last_err = str(e)
+                        if attempt == q_params['retries'] - 1:
+                            raise BusinessError(f'查询生成失败：{last_err}', 422)
+                        tracker.fail(2, f'第{attempt + 1}次串行回传校验/执行未通过：{last_err}，已回传 LLM 重试')
+                        yield _step_ev(tracker, 2)
+                        _log_step(tracker, 2)
+                        log('info', 'ask_retry', attempt=attempt, error=last_err)
+                        yield _step_running(2)
 
         yield _step_running(3)
         tracker.done(3, f'执行取数完成，返回 {len(rows)} 条{ "（已截断）" if truncated else "" }')
         yield _step_ev(tracker, 3)
+        _log_step(tracker, 3)
 
         # 目标/完成率：应用层两次查询 + 内存 join（ReportOverall × GoalLedger），不落冗余列
         if used_query['model'] == 'ReportOverall' and any(w in question for w in ('目标', '完成率', '达成')):
@@ -232,8 +303,12 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
         conclusion, ret2 = await llm_client.invoke(
             'conclusion', {'question': question, 'query': used_query, 'rows': sample}, model_conf)
         tokens += ret2['total_tokens']
+        log('info', 'llm_call', scenario='conclusion', elapsed_s=ret2.get('elapsed_s'),
+            tokens=ret2.get('total_tokens'), cache_hit=ret2.get('cache_hit_tokens'),
+            cache_miss=ret2.get('cache_miss_tokens'))
         tracker.done(4, f'基于真实结果行生成结论与 {QA_FOLLOW_UPS} 条追问建议')
         yield _step_ev(tracker, 4)
+        _log_step(tracker, 4)
 
         text = conclusion.get('text', '')
         follow_ups = (conclusion.get('follow_ups') or [])[:QA_FOLLOW_UPS]
@@ -265,12 +340,15 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                 'model': model_conf['name'],
                 'modelName': model_conf.get('modelName', ''),
                 'platform': model_conf['platform'],
+                'request_id': get_request_id(),
             },
         }
         await _save_messages(session, question, resp, user_name)
         saved = True
 
         await query_cache.upsert(question, template, success=True)
+        log('info', 'ask_done', total_ms=round((time.monotonic() - t0) * 1000), retries=retries,
+            row_count=len(rows), query_source=query_source)
         yield {'type': 'done', 'data': resp}
     except BusinessError as e:
         if not saved:

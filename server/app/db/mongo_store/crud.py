@@ -107,16 +107,18 @@ async def query(gql: str, params: dict | None = None) -> list[dict[str, Any]]:
 
     coll = _col(ast['model'])
 
-    # 纯 $match 无关联 → 用 find 性能更好
+    return await _execute_pipeline(coll, pipeline, has_pipeline, projection, ast, schema, ctx,
+                                   has_inject, inject_info)
+
+
+async def _execute_pipeline(coll, pipeline, has_pipeline, projection, ast, schema, ctx,
+                            has_inject, inject_info):
+    """按 pipeline 形态选执行路径：纯 $match → find 快路径；$lookup+分页 → 两阶段；否则标准聚合"""
+    # ── 纯 $match 无关联 → 用 find 性能更好 ──
     if not has_pipeline and len(pipeline) == 1 and '$match' in pipeline[0]:
         cursor = coll.find(pipeline[0]['$match'], projection) if projection else coll.find(pipeline[0]['$match'])
         items = await cursor.to_list(length=None)
-        for item in items:
-            process_node(item, ast, schema, ctx)
-        await _run_async_fns(items, schema, ctx)
-        if has_inject:
-            _strip_dep_injected(items, inject_info, schema)
-        return items
+        return await _postprocess(items, ast, schema, ctx, has_inject, inject_info)
 
     # ── 自动两阶段优化（根级别） ──
     # 当 pipeline 同时有 $lookup 和 $skip/$limit 时，先用轻量 pipeline 取分页 ID，
@@ -125,54 +127,7 @@ async def query(gql: str, params: dict | None = None) -> list[dict[str, Any]]:
     has_skip_limit = (not has_pipeline) and any('$skip' in st or '$limit' in st for st in pipeline)
 
     if first_lookup_idx >= 0 and has_skip_limit:
-        # 检查 sort 是否引用关联表字段（如 'bidders.amount'）
-        sort_stage = next((st for st in pipeline if '$sort' in st), None)
-        sorts_by_relation = False
-        if isinstance(sort_stage, dict):
-            sorts_by_relation = any('.' in k for k in (sort_stage.get('$sort') or {}))
-
-        if not sorts_by_relation:
-            # 阶段一：仅取分页后的 ID（无 $lookup，利用索引）
-            id_pipeline = list(pipeline[:first_lookup_idx])
-            pl_sort = next((st for st in pipeline if '$sort' in st), None)
-            pl_skip = next((st for st in pipeline if '$skip' in st), None)
-            pl_limit = next((st for st in pipeline if '$limit' in st), None)
-            if pl_sort:
-                id_pipeline.append(pl_sort)
-            if pl_skip:
-                id_pipeline.append(pl_skip)
-            if pl_limit:
-                id_pipeline.append(pl_limit)
-            id_pipeline.append({'$project': {'_id': 1}})
-
-            id_docs = await (await coll.aggregate(id_pipeline)).to_list(length=None)
-            if not id_docs:
-                return []
-
-            ids = [d['_id'] for d in id_docs]
-
-            # 阶段二：仅对分页后的少量 ID 执行关联查询
-            full_pipeline = [
-                st for st in pipeline[first_lookup_idx:]
-                if '$sort' not in st and '$skip' not in st and '$limit' not in st
-            ]
-            full_pipeline.insert(0, {'$match': {'_id': {'$in': ids}}})
-
-            if projection:
-                full_pipeline.append({'$project': projection})
-            items = await (await coll.aggregate(full_pipeline)).to_list(length=None)
-
-            # $in 查询不保证返回顺序，按阶段一 ids 的顺序重排，恢复正确排序
-            if pl_sort and len(ids) > 1:
-                id_order = {str(_id): i for i, _id in enumerate(ids)}
-                items.sort(key=lambda d: id_order.get(str(d['_id']), len(id_order)))
-
-            for item in items:
-                process_node(item, ast, schema, ctx)
-            await _run_async_fns(items, schema, ctx)
-            if has_inject:
-                _strip_dep_injected(items, inject_info, schema)
-            return items
+        return await _run_two_phase(coll, pipeline, projection, ast, schema, ctx, has_inject, inject_info)
 
     # ── 标准单阶段聚合 ──
     if not has_pipeline and projection:
@@ -184,18 +139,28 @@ async def query(gql: str, params: dict | None = None) -> list[dict[str, Any]]:
         return items
 
     # 标准 GQL 模式：递归处理每一条
-    for item in items:
-        process_node(item, ast, schema, ctx)
-    await _run_async_fns(items, schema, ctx)
-    if has_inject:
-        _strip_dep_injected(items, inject_info, schema)
-    return items
+    return await _postprocess(items, ast, schema, ctx, has_inject, inject_info)
 
 
 async def query_one(gql: str, params: dict | None = None) -> dict[str, Any] | None:
     """GQL 查询（返回单条）"""
     items = await query(gql, params)
     return items[0] if items else None
+
+
+def _resolve_page(ast, params):
+    """解析分页参数（page/pageSize 或传统 $skip/$limit），pageSize 已含 5000 上限"""
+    if 'page' in params or 'pageSize' in params:
+        page = max(0, math.floor(Number(params['page']))) if params.get('page') is not None else 0
+        page_size = Number(params['pageSize']) if params.get('pageSize') is not None else 50
+    else:
+        skip_ref = ast['params'].get('skip')
+        limit_ref = ast['params'].get('limit')
+        skip_val = params.get(skip_ref[1:]) if skip_ref else None
+        limit_val = params.get(limit_ref[1:]) if limit_ref else None
+        page = math.floor(Number(skip_val) / Number(limit_val)) if (skip_val is not None and limit_val) else 0
+        page_size = Number(limit_val) if limit_val is not None else 50
+    return page, min(page_size, 5000)
 
 
 async def query_with_count(gql: str, params: dict | None = None) -> dict[str, Any]:
@@ -212,20 +177,7 @@ async def query_with_count(gql: str, params: dict | None = None) -> dict[str, An
     schema = _get_schema(ast['model'])
     coll = _col(ast['model'])
 
-    # ── 分页参数解析 ──
-    if 'page' in params or 'pageSize' in params:
-        page = max(0, math.floor(Number(params['page']))) if params.get('page') is not None else 0
-        page_size = Number(params['pageSize']) if params.get('pageSize') is not None else 50
-    else:
-        skip_ref = ast['params'].get('skip')
-        limit_ref = ast['params'].get('limit')
-        skip_val = params.get(skip_ref[1:]) if skip_ref else None
-        limit_val = params.get(limit_ref[1:]) if limit_ref else None
-        page = math.floor(Number(skip_val) / Number(limit_val)) if (skip_val is not None and limit_val) else 0
-        page_size = Number(limit_val) if limit_val is not None else 50
-
-    # 防止拖库：pageSize 上限 5000
-    page_size = min(page_size, 5000)
+    page, page_size = _resolve_page(ast, params)
 
     # 确保 GQL 实际使用上述分页值
     if ast['params'].get('skip'):
@@ -250,6 +202,87 @@ async def query_with_count(gql: str, params: dict | None = None) -> dict[str, An
     has_more = (page + 1) * page_size < total
 
     return {'items': items, 'total': total, 'hasMore': has_more, 'page': page, 'pageSize': page_size}
+
+
+async def _postprocess(items, ast, schema, ctx, has_inject, inject_info):
+    """标准 GQL 尾处理：递归裁剪 + asyncFn 计算列 + 移除注入的关系依赖"""
+    for item in items:
+        process_node(item, ast, schema, ctx)
+    await _run_async_fns(items, schema, ctx)
+    if has_inject:
+        _strip_dep_injected(items, inject_info, schema)
+    return items
+
+
+async def _run_two_phase(coll, pipeline, projection, ast, schema, ctx, has_inject, inject_info):
+    """自动两阶段优化：先取分页 ID，再对少量 ID 关联查询"""
+    # 检查 sort 是否引用关联表字段（如 'bidders.amount'），是则退化为标准单阶段
+    if _sorts_by_relation(pipeline):
+        return await _run_standard(coll, pipeline, projection, ast, schema, ctx, has_inject,
+                                   inject_info)
+
+    first_lookup_idx = next((i for i, st in enumerate(pipeline) if '$lookup' in st), -1)
+
+    # 阶段一：仅取分页后的 ID（无 $lookup，利用索引）
+    id_pipeline = _paginate_id_pipeline(pipeline, first_lookup_idx)
+    pl_sort = next((st for st in pipeline if '$sort' in st), None)
+
+    id_docs = await (await coll.aggregate(id_pipeline)).to_list(length=None)
+    if not id_docs:
+        return []
+    ids = [d['_id'] for d in id_docs]
+
+    # 阶段二：仅对分页后的少量 ID 执行关联查询
+    full_pipeline = [
+        st for st in pipeline[first_lookup_idx:]
+        if '$sort' not in st and '$skip' not in st and '$limit' not in st
+    ]
+    full_pipeline.insert(0, {'$match': {'_id': {'$in': ids}}})
+
+    if projection:
+        full_pipeline.append({'$project': projection})
+    items = await (await coll.aggregate(full_pipeline)).to_list(length=None)
+
+    # $in 查询不保证返回顺序，按阶段一 ids 的顺序重排，恢复正确排序
+    items = _restore_sort_order(items, ids, pl_sort)
+
+    return await _postprocess(items, ast, schema, ctx, has_inject, inject_info)
+
+
+def _paginate_id_pipeline(pipeline, first_lookup_idx):
+    """构建仅取分页 ID 的轻量 pipeline（保留 sort/skip/limit，投影仅 _id）"""
+    id_pipeline = list(pipeline[:first_lookup_idx])
+    for key in ('$sort', '$skip', '$limit'):
+        st = next((s for s in pipeline if key in s), None)
+        if st:
+            id_pipeline.append(st)
+    id_pipeline.append({'$project': {'_id': 1}})
+    return id_pipeline
+
+
+def _sorts_by_relation(pipeline):
+    """pipeline 的 $sort 是否引用关联表点号字段（如 'bidders.amount'）"""
+    sort_stage = next((st for st in pipeline if '$sort' in st), None)
+    if not isinstance(sort_stage, dict):
+        return False
+    return any('.' in k for k in (sort_stage.get('$sort') or {}))
+
+
+def _restore_sort_order(items, ids, pl_sort):
+    """按阶段一 ids 顺序重排阶段二结果（有排序且多文档时）"""
+    if not pl_sort or len(ids) <= 1:
+        return items
+    id_order = {str(_id): i for i, _id in enumerate(ids)}
+    items.sort(key=lambda d: id_order.get(str(d['_id']), len(id_order)))
+    return items
+
+
+async def _run_standard(coll, pipeline, projection, ast, schema, ctx, has_inject, inject_info):
+    """标准单阶段聚合（两阶段优化因 sort 引用关联字段而退化至此路径）"""
+    if projection:
+        pipeline.append({'$project': projection})
+    items = await (await coll.aggregate(pipeline)).to_list(length=None)
+    return await _postprocess(items, ast, schema, ctx, has_inject, inject_info)
 
 
 def Number(val):
@@ -286,6 +319,20 @@ def _to_base36(n):
 
 def _has_creator_permission(s):
     return 'creator' in (s.get('read') or []) or 'creator' in (s.get('write') or [])
+
+
+async def _check_write_perm(s, ctx, coll, condition=None, deny_msg='无写入权限'):
+    """Schema 级写权限检查：guest 直接拒绝；非写授权时仅 creator 命中才放行"""
+    if 'guest' in (ctx.get('roles') or []):
+        raise PermissionError(deny_msg)
+    if can_write_schema(s, ctx):
+        return
+    if s.get('write') and 'creator' in s['write'] and condition:
+        existing = await coll.find_one(condition, {'_id': 1, 'createdBy': 1})
+        if not existing or evaluate(ctx, s['write'], existing) is False:
+            raise PermissionError(deny_msg)
+    else:
+        raise PermissionError(deny_msg)
 
 
 async def insert(schema_name: str, data: dict) -> dict[str, Any]:
@@ -372,15 +419,7 @@ async def update(schema_name: str, condition: dict, data: dict, options: dict | 
 
     # Schema 级写权限检查
     if ctx:
-        if 'guest' in (ctx.get('roles') or []):
-            raise PermissionError('无写入权限')
-        if not can_write_schema(s, ctx):
-            if s.get('write') and 'creator' in s['write'] and condition:
-                existing = await coll.find_one(condition, {'_id': 1, 'createdBy': 1})
-                if not existing or evaluate(ctx, s['write'], existing) is False:
-                    raise PermissionError('无写入权限')
-            else:
-                raise PermissionError('无写入权限')
+        await _check_write_perm(s, ctx, coll, condition)
 
     has_raw_operators = bool(data) and any(k.startswith('$') for k in data)
 
@@ -456,15 +495,7 @@ async def remove(schema_name: str, condition: dict) -> dict[str, Any]:
     coll = _col(schema_name)
 
     if ctx:
-        if 'guest' in (ctx.get('roles') or []):
-            raise PermissionError('无删除权限')
-        if not can_write_schema(s, ctx):
-            if s.get('write') and 'creator' in s['write'] and condition:
-                existing = await coll.find_one(condition, {'_id': 1, 'createdBy': 1})
-                if not existing or evaluate(ctx, s['write'], existing) is False:
-                    raise PermissionError('无删除权限')
-            else:
-                raise PermissionError('无删除权限')
+        await _check_write_perm(s, ctx, coll, condition, deny_msg='无删除权限')
 
     # 归档：完整拷贝到删除附表（保留原字段与时间戳，附 deletedAt）
     archived_count = 0
@@ -595,32 +626,9 @@ async def _mutation_one(schema, data):
     # ── 3. 写入 parent ──
     if or_conditions:
         # ── Upsert 路径 ──
-        set_data = _remove_undefined({**filtered_field_data})
-        set_on_insert = {}
-
-        if set_data.get('_id') and str(set_data['_id']).strip():
-            set_on_insert['_id'] = set_data['_id']
-        elif schema['idPrefix']:
-            set_on_insert['_id'] = _generate_id(schema)
-        set_data.pop('_id', None)
-
-        if schema['timestamps']:
-            now = int(time.time() * 1000)
-            set_data['updatedAt'] = now
-            set_on_insert['createdAt'] = filtered_field_data.get('createdAt', now)
-        set_data.pop('createdAt', None)
-
-        # 自动设置 createdBy（upsert 新文档时）
-        if _has_creator_permission(schema) and not set_on_insert.get('createdBy'):
-            set_on_insert['createdBy'] = set_on_insert.get('_id')
-
-        update_doc = {'$set': set_data}
-        if set_on_insert:
-            update_doc['$setOnInsert'] = set_on_insert
-
         parent_doc = await coll.find_one_and_update(
             {'$or': or_conditions},
-            update_doc,
+            _build_upsert_update(schema, filtered_field_data),
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )
@@ -629,6 +637,41 @@ async def _mutation_one(schema, data):
         parent_doc = await insert(schema['name'], filtered_field_data)
 
     # ── 4. 处理 relation 子文档 ──
+    await _apply_relations(schema, relation_data, parent_doc)
+
+    # ── 5. 补默认值后返回 ──
+    return apply_defaults_and_computes(parent_doc, schema)
+
+
+def _build_upsert_update(schema, field_data):
+    """由 field_data 生成 upsert 的 update_doc（$set + $setOnInsert）"""
+    set_data = _remove_undefined({**field_data})
+    set_on_insert = {}
+
+    if set_data.get('_id') and str(set_data['_id']).strip():
+        set_on_insert['_id'] = set_data['_id']
+    elif schema['idPrefix']:
+        set_on_insert['_id'] = _generate_id(schema)
+    set_data.pop('_id', None)
+
+    if schema['timestamps']:
+        now = int(time.time() * 1000)
+        set_data['updatedAt'] = now
+        set_on_insert['createdAt'] = field_data.get('createdAt', now)
+    set_data.pop('createdAt', None)
+
+    # 自动设置 createdBy（upsert 新文档时）
+    if _has_creator_permission(schema) and not set_on_insert.get('createdBy'):
+        set_on_insert['createdBy'] = set_on_insert.get('_id')
+
+    update_doc = {'$set': set_data}
+    if set_on_insert:
+        update_doc['$setOnInsert'] = set_on_insert
+    return update_doc
+
+
+async def _apply_relations(schema, relation_data, parent_doc):
+    """将 relation 子文档写入（one→外键 upsert / many→递归 mutation）"""
     for rel_name, rel_val in relation_data.items():
         if rel_val is None:
             continue
@@ -650,9 +693,6 @@ async def _mutation_one(schema, data):
                     continue
                 child_item[rel_def['foreignField']] = parent_id
                 await _mutation_one(rel_schema, child_item)
-
-    # ── 5. 补默认值后返回 ──
-    return apply_defaults_and_computes(parent_doc, schema)
 
 
 async def mutation(schema_name: str, data: dict | list[dict]) -> Any:

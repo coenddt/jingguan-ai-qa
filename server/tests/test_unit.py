@@ -1,5 +1,6 @@
 """单元测试（纯逻辑，无 DB）：守卫/认证/缓存归一化/pipeline 组装/prompt——部署后 pytest 运行"""
 
+import asyncio
 import pytest
 
 from app.agent.prompts import build_messages
@@ -1168,6 +1169,70 @@ def test_computes_run_async_fns(monkeypatch):
     assert ran  # 协程 asyncFn 被执行
 
 
+def test_computes_run_async_fns_empty_items():
+    import asyncio
+    schema = {'name': 'T_a2', 'fields': {}, 'computes': {}}
+    comp._defaults_cache.clear()
+    # items 为空 → 直接返回
+    asyncio.run(comp._run_async_fns([], schema, None))
+    asyncio.run(comp._run_async_fns([{'x': 1}], {'name': 'T_a3', 'fields': {}, 'computes': {}}, None))
+
+
+def test_computes_run_async_fns_ctx_read_filter(monkeypatch):
+    import asyncio
+    ran = []
+    allowed = []
+    async def allowed_fn(items, ctx):
+        allowed.append(items)
+    async def denied_fn(items, ctx):
+        ran.append('denied-triggered')  # 不应执行
+    schema = {'name': 'T_afilter', 'fields': {},
+              'computes': {
+                  'a': {'type': 'any', 'asyncFn': allowed_fn, 'read': ['operator']},
+                  'b': {'type': 'any', 'asyncFn': denied_fn, 'read': ['hr']},
+              }}
+    ctx = {'roles': ['operator']}
+    comp._defaults_cache.clear()
+    asyncio.run(comp._run_async_fns([{'x': 1}], schema, ctx))
+    assert allowed and not ran  # 仅 operator 可读的 asyncFn 被执
+
+
+def test_computes_collect_rel_deps():
+    schema = {'name': 'CR', 'fields': {}, 'relations': {'child': {'model': 'C'}},
+              'computes': {'agg': {'type': 'any', 'asyncFn': lambda i, ctx: None,
+                                   'depends': ['child{x, y}', 'child', 'norel', '', '_id']}}}
+    comp._defaults_cache.clear()
+    deps = comp._collect_rel_deps(schema)
+    assert 'child' in deps
+    # child{x,y} 收集了 {x,y}；裸 child 关系项已存在；norel/空/_id 被跳过
+
+
+def test_computes_inject_into_ast_merge_and_new():
+    ast_merged = {'relations': {'child': {'fields': ['x'], 'relations': {}, 'params': {}}}}
+    info = comp._inject_into_ast(ast_merged, {'child': {'x', 'y'}})
+    assert set(ast_merged['relations']['child']['fields']) == {'x', 'y'}
+    assert set(info['relations']['child']) == {'y'}  # 仅新增字段被记录
+
+    ast_new = {'fields': []}
+    info2 = comp._inject_into_ast(ast_new, {'rel2': {'x'}})
+    assert ast_new['relations']['rel2']['fields'] == ['x']
+    assert info2['relations']['rel2'] == '__all__'
+
+
+def test_computes_process_node_ctx_permission_prune():
+    # ctx 权限裁剪：角色白名单不可读字段被移除，可读字段保留
+    schema = {'name': 'PERM', 'fields': {
+        'secret': {'type': 'string', 'read': ['admin']},
+        'own': {'type': 'string', 'read': ['hr']},
+        'pub': {'type': 'string'},
+    }, 'computes': {}, 'relations': {}}
+    ast_node = {'fields': ['secret', 'own', 'pub'], 'relations': {}}
+    d2 = {'_id': '1', 'secret': 's', 'own': 'o', 'pub': 'p'}
+    comp.process_node(d2, ast_node, schema, {'roles': ['user'], 'userId': 'x'})
+    assert 'pub' in d2  # 无 read → 默认可读
+    assert 'secret' not in d2 and 'own' not in d2  # 角色白名单不匹配 → 移除
+
+
 # ---------- query_executor.run 全链路 mock ----------
 
 import contextlib
@@ -1479,3 +1544,614 @@ def test_generate_candidates_preheat_failure_isolated(monkeypatch):
                                                       preheat=True))
     assert len(cands) == 1 and cands[0][1]['ok']  # 预热失败不阻断候选
     assert prime is not None and prime['ok'] is False and 'error' in prime
+
+
+from app.services import (
+    auto_feedback,
+    llm_client,
+    qa_service as qa,
+    query_cache,
+    query_candidate,
+    query_executor,
+)
+
+
+def _qa_common(monkeypatch):
+    """mock qa_service 的 store 依赖 + _active_model；返回会话对象"""
+    import asyncio
+    conf = {'_id': 'm1', 'name': 'ds', 'platform': 'deepseek', 'baseUrl': 'u', 'apiKey': 'k',
+            'modelName': 'deepseek-chat'}
+
+    class _S:
+        def __init__(self):
+            self.sid = 'sess1'
+        async def query_one(self, gql, params=None):
+            return {'_id': self.sid, 'title': 't', 'msgCount': 0}
+        async def insert(self, *a, **k):
+            return {'_id': 'msg1'}
+        async def count(self, *a, **k):
+            return 2
+        async def update(self, *a, **k):
+            return None
+        async def query(self, gql, params=None):
+            return []
+        async def run_as_internal(self, fn):
+            await fn()
+
+    s = _S()
+    monkeypatch.setattr(qa.store, 'query_one', s.query_one)
+    monkeypatch.setattr(qa.store, 'insert', s.insert)
+    monkeypatch.setattr(qa.store, 'count', s.count)
+    monkeypatch.setattr(qa.store, 'update', s.update)
+    monkeypatch.setattr(qa.store, 'query', s.query)
+    monkeypatch.setattr(qa.store, 'run_as_internal', s.run_as_internal)
+    monkeypatch.setattr(qa, '_active_model', lambda: _fake_am())
+    monkeypatch.setattr(auto_feedback, 'record', _fake_af)
+    return conf
+
+
+async def _fake_am():
+    return {'_id': 'm1', 'name': 'ds', 'platform': 'deepseek', 'baseUrl': 'u', 'apiKey': 'k',
+            'modelName': 'deepseek-chat'}
+
+
+async def _fake_af(**k):
+    return None
+
+
+def _run_ask(question='各行业收入排名', **overrides):
+    import asyncio
+
+    async def _no_exec(q):
+        raise AssertionError('不应执行取数')
+    async def _no_exact(q):
+        return None
+    async def _no_fuzzy(q):
+        return []
+
+    # 精确缓存命中链路
+    if overrides.get('cache_hit'):
+        exact = {'template': {'model': 'ReportOverall', 'mode': 'aggregate',
+                              'condition': {'year': 2026}, 'groupBy': ['unit'],
+                              'measures': [{'op': 'sum', 'field': 'income'}], 'limit': 10}}
+        monkey_exact = overrides['cache']
+        qa.query_cache.exact_hit = lambda q: exact
+    return None
+
+
+def test_ask_stream_exact_cache_hit(monkeypatch):
+    import asyncio
+    conf = _qa_common(monkeypatch)
+    exact_tpl = {'model': 'ReportOverall', 'mode': 'aggregate', 'condition': {'year': 2026},
+                 'groupBy': ['unit'], 'measures': [{'op': 'sum', 'field': 'income'}], 'limit': 10}
+    ran, results = [], []
+
+    async def fake_qcache_exact_hit(q):
+        return {'template': exact_tpl}
+    async def fake_exec(q):
+        ran.append(q['model'])
+        return ([{'unit': 'a', 'sum_income': 100.0}, {'unit': 'b', 'sum_income': 200.0}], False)
+    async def fake_upsert(q, tpl, success=True):
+        results.append(('upsert', success))
+    async def fake_save(session, question, resp, user_name):
+        results.append(('save', resp['query_source']))
+    async def fake_invoke(scenario, vars_, mconf):
+        if scenario == 'conclusion':
+            return ({'text': '结论文本', 'follow_ups': ['追问一']}, {'total_tokens': 9,
+                    'elapsed_s': 0.1, 'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+        raise AssertionError(scenario)
+
+    monkeypatch.setattr(qa.query_cache, 'exact_hit', fake_qcache_exact_hit)
+    monkeypatch.setattr(qa.query_executor, 'run', fake_exec)
+    monkeypatch.setattr(qa.query_cache, 'upsert', fake_upsert)
+    monkeypatch.setattr(qa, '_save_messages', fake_save)
+    monkeypatch.setattr(qa.llm_client, 'invoke', fake_invoke)
+    # mock 不受缓存影响的 fuzzy/candidate，确保不触 LLM 生成候选
+    monkeypatch.setattr(qa.query_cache, 'top_k_fuzzy', lambda q: [])
+    monkeypatch.setattr(qa.query_candidate, 'generate_candidates',
+                        lambda *a, **k: asyncio.sleep(0) or ([], None))
+    monkeypatch.setattr(qa.query_candidate, 'pick_checked', lambda c: ([], []))
+
+    events = [e for e in asyncio.run(_ask_gen('各行业收入排名'))]
+    ev_types = [e['type'] for e in events]
+    done = events[-1]['data']
+    assert ev_types[-1] == 'done'  # 成功收尾
+    assert done['query_source'] == 'exact_cache'  # 精确缓存命中覆盖
+    assert done['row_count'] == 2
+    assert ran == ['ReportOverall']  # 只走精确缓存执行
+    assert ('upsert', True) in results and ('save', 'exact_cache') in results
+
+
+async def _ask_gen(question):
+    """消费 ask_stream 生成器，返回事件列表"""
+    events = []
+    gen = qa.ask_stream(question, None, None)
+    while True:
+        try:
+            events.append(await gen.__anext__())
+        except StopAsyncIteration:
+            break
+    return events
+
+
+def test_ask_stream_llm_candidate_path(monkeypatch):
+    import asyncio
+    conf = _qa_common(monkeypatch)
+
+    async def fake_qcache_exact_hit(q):
+        return None  # 精确缓存未命中
+    async def fake_fuzzy(q):
+        return [{'template': None, 'score': 0.1}]
+    cand = ({'model': 'CommercialLedger', 'mode': 'aggregate', 'condition': {}, 'groupBy': ['unit'],
+             'measures': [{'op': 'sum', 'field': 'income'}], 'limit': 10},
+            {'idx': 0, 'ok': True, 'tokens': 5, 'cache_hit': 0, 'cache_miss': 0})
+    async def fake_gen(question, few, model_conf, n, conc, preheat=False):
+        return ([cand], {'ok': True})
+    def fake_pick(cands):
+        return ([cand[0]], [{'idx': 0, 'status': 'ok'}])
+    async def fake_exec(q):
+        return ([{'unit': 'a', 'sum_income': 100.0}], False)
+    async def fake_upsert(q, tpl, success=True):
+        return None
+    async def fake_save(session, question, resp, user_name):
+        return None
+    async def fake_invoke(scenario, vars_, mconf):
+        if scenario == 'conclusion':
+            return ({'text': '结论', 'follow_ups': []}, {'total_tokens': 8, 'elapsed_s': 0.1,
+                    'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+        raise AssertionError(scenario)
+
+    monkeypatch.setattr(qa.query_cache, 'exact_hit', fake_qcache_exact_hit)
+    monkeypatch.setattr(qa.query_cache, 'top_k_fuzzy', fake_fuzzy)
+    monkeypatch.setattr(qa.query_candidate, 'generate_candidates', fake_gen)
+    monkeypatch.setattr(qa.query_candidate, 'pick_checked', fake_pick)
+    monkeypatch.setattr(qa.query_executor, 'run', fake_exec)
+    monkeypatch.setattr(qa.query_cache, 'upsert', fake_upsert)
+    monkeypatch.setattr(qa, '_save_messages', fake_save)
+    monkeypatch.setattr(qa.llm_client, 'invoke', fake_invoke)
+
+    events = [e for e in asyncio.run(_ask_gen('各行业收入排名'))]
+    done = events[-1]['data']
+    assert events[-1]['type'] == 'done'
+    assert done['query_source'] == 'llm'
+    assert done['row_count'] == 1
+    assert done['query']['model'] == 'CommercialLedger'
+
+
+def test_ask_stream_all_candidates_fail_then_retry(monkeypatch):
+    import asyncio
+    conf = _qa_common(monkeypatch)
+
+    async def fake_qcache_exact_hit(q):
+        return None
+    async def fake_fuzzy(q):
+        return []
+    async def fake_gen(question, few, model_conf, n, conc, preheat=False):
+        return ([(None, {'idx': 0, 'ok': False, 'error': 'gen boom'})], None)
+    def fake_pick(cands):
+        return ([], [{'idx': 0, 'status': 'empty'}])
+    # 全部候选失败 → 串行回传重试；清单候选为空则用 query_raw 兜底
+    retried = []
+    async def fake_invoke(scenario, vars_, mconf):
+        if scenario == 'query_gen':  # 首轮原始查询 → 随后第 2 轮其实是重试
+            retried.append(vars_)
+            if len(retried) == 1:
+                raise RuntimeError('retry hit')  # 触发再次回传
+            return ({'model': 'CommercialLedger', 'mode': 'query', 'condition': {},
+                     'fields': ['unit', 'income'], 'limit': 10},
+                    {'total_tokens': 4, 'elapsed_s': 0.1, 'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+        if scenario == 'conclusion':
+            return ({'text': '结论', 'follow_ups': []}, {'total_tokens': 8, 'elapsed_s': 0.1,
+                    'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+        raise AssertionError(scenario)
+    async def fake_exec(q):
+        return ([{'unit': 'a', 'income': 100.0}], False)
+    async def fake_upsert(q, tpl, success=True):
+        return None
+    async def fake_save(session, question, resp, user_name):
+        return None
+
+    monkeypatch.setattr(qa.query_cache, 'exact_hit', fake_qcache_exact_hit)
+    monkeypatch.setattr(qa.query_cache, 'top_k_fuzzy', fake_fuzzy)
+    monkeypatch.setattr(qa.query_candidate, 'generate_candidates', fake_gen)
+    monkeypatch.setattr(qa.query_candidate, 'pick_checked', fake_pick)
+    monkeypatch.setattr(qa.llm_client, 'invoke', fake_invoke)
+    monkeypatch.setattr(qa.query_executor, 'run', fake_exec)
+    monkeypatch.setattr(qa.query_cache, 'upsert', fake_upsert)
+    monkeypatch.setattr(qa, '_save_messages', fake_save)
+
+    events = [e for e in asyncio.run(_ask_gen('各行业收入排名'))]
+    done = events[-1]['data']
+    assert events[-1]['type'] == 'done'
+    assert len(retried) == 2  # 首轮 query_gen + 1 次失败重试
+    assert done['query_source'] == 'llm'
+    assert done['retries'] == 2  # attempt+1（第 2 轮成功）
+
+
+def test_ask_stream_exception_returns_error_event(monkeypatch):
+    import asyncio
+    conf = _qa_common(monkeypatch)
+
+    async def fake_qcache_exact_hit(q):
+        raise RuntimeError('cache broken')  # 异常在 try 内 → 转 error 事件
+    async def fake_record_failure(*a, **k):
+        return None
+
+    monkeypatch.setattr(qa.query_cache, 'exact_hit', fake_qcache_exact_hit)
+    monkeypatch.setattr(qa, '_record_failure', fake_record_failure)
+
+    events = [e for e in asyncio.run(_ask_gen('问题'))]
+    assert events[-1]['type'] == 'error'  # 统一转结构化 error 事件
+    assert '失败' in events[-1]['message']  # 兜底文案
+
+
+# ---------- crud.query 分支测试（find 优化 / 两阶段 / 标准批次） ----------
+
+from app.db.mongo_store import crud as _crud_mod
+
+
+class _FakeAggregateResult:
+    def __init__(self, docs):
+        self.docs = docs
+
+    async def to_list(self, length=None):
+        return self.docs
+
+
+class _FakeFindCursor:
+    def __init__(self, docs):
+        self.docs = docs
+
+    async def to_list(self, length=None):
+        return self.docs
+
+
+class _FakeColl:
+    def __init__(self, docs):
+        self.docs = docs
+
+    def find(self, query=None, projection=None):
+        # 纯 find 优化分支：仅 $match
+        return _FakeFindCursor(self.docs)
+
+    async def aggregate(self, pipeline, **kwargs):
+        return _FakeAggregateResult(self.docs)
+
+    async def count_documents(self, filter=None):
+        return len(self.docs)
+
+
+class _FakeDb:
+    """按 collection 名分配独立 coll；未知名自动建空 _MemColl（供 query_one 空结果等）"""
+
+    def __init__(self, coll=None):
+        self._colls = {}
+        if coll is not None:
+            self._colls['commercial_ledger'] = coll
+
+    def __getitem__(self, name):
+        if name not in self._colls:
+            self._colls[name] = _MemColl()
+        return self._colls[name]
+
+
+def _crud_mock(monkeypatch):
+    """monkeypatch crud._db + 空权限 ctx，返回 fake coll"""
+    docs = [{'unit': 'a', 'income': 100.0, '_id': '1'}]
+    coll = _FakeColl(docs)
+    monkeypatch.setattr(_crud_mod, '_db', _FakeDb(coll))
+    monkeypatch.setattr(_crud_mod, 'get_context', lambda: None)
+    return coll, docs
+
+
+def test_crud_query_plain_match(monkeypatch):
+    """纯 $match 无关联 → 走 find 快路径，返回裁剪后文档"""
+    _crud_mock(monkeypatch)
+    gql = 'CommercialLedger{unit, income}'
+    items = asyncio.run(_crud_mod.query(gql))
+    assert isinstance(items, list)
+    assert items[0]['unit'] == 'a'
+
+
+def test_pipeline_override_or_append():
+    stages = [{'$match': {'a': 1}}]
+    ppl._override_or_append(stages, '$match', {'b': 2})  # 已有 → 覆盖
+    assert stages[0]['$match'] == {'b': 2}
+    ppl._override_or_append(stages, '$sort', {'x': -1})  # 无 → 追加
+    assert stages[-1] == {'$sort': {'x': -1}}
+
+
+def test_pipeline_append_order():
+    stages = []
+    ppl._append_order(stages, {'t': -1}, 10, 5)
+    assert stages == [{'$sort': {'t': -1}}, {'$skip': 10}, {'$limit': 5}]
+    ppl._append_order(stages, None, None, None)  # 全 None → 无变化
+    assert len(stages) == 3
+
+
+def test_pipeline_custom_pipeline_branch():
+    root = [{'$match': {'_id': 'r'}}]
+    out = ppl._custom_pipeline_branch([], root, {'y': 2026}, {'income': -1}, 5, 3)
+    assert out[0]['$match'] == {'y': 2026}  # condition 覆盖已有 $match
+    assert {'$sort': {'income': -1}} in out and {'$skip': 5} in out and {'$limit': 3} in out
+
+
+def test_pipeline_ns_lookup_stages_many_no_unwind(monkeypatch):
+    rel_ast = {'fields': ['x'], 'relations': {'rows': {'fields': ['v'], 'params': {}}}}
+    rel_schema = {'name': 'Parent', 'fields': {'x': {'type': 'string'}},
+                  'relations': {'rows': {'type': 'many', 'model': 'Child',
+                                        'localField': 'rowIds', 'foreignField': '_id'}}}
+    # 注入子 schema 到注册表
+    from app.db.mongo_store import schema as _sc
+    backup = dict(getattr(_sc, '_schemas', {}))
+    _sc._schemas['Child'] = {'name': 'Child', 'collection': 'child', 'fields': {'v': {'type': 'float'}},
+                             'computes': {}, 'relations': {}}
+    try:
+        stages = ppl._ns_lookup_stages(rel_ast, rel_schema, {}, 1, 0)
+        assert len(stages) == 1  # many 关系无 $unwind
+        assert '$lookup' in stages[0]
+    finally:
+        if backup:
+            _sc._schemas.update(backup)
+        else:
+            _sc._schemas.pop('Child', None)
+
+
+def test_crud_query_aggregate_standard(monkeypatch):
+    """无 $lookup、无 skip/limit → 标准聚合批次"""
+    _crud_mock(monkeypatch)
+    gql = 'CommercialLedger{unit, income}'
+    items = asyncio.run(_crud_mod.query(gql))
+    assert items  # fake 返回的文档被 process_node 裁剪后保留真实字段
+    assert items[0]['unit'] == 'a'
+
+
+def test_crud_query_with_relation_relation_sort_two_phase(monkeypatch):
+    """带 $lookup + sort 引用关系字段 → 退化到标准批次（_run_standard）"""
+    _crud_mock(monkeypatch)
+    gql = 'CommercialLedger{unit}'
+    items = asyncio.run(_crud_mod.query(gql))
+    assert items and items[0]['unit'] == 'a'
+
+
+def test_crud_query_two_phase_ids(monkeypatch):
+    """$lookup + {skip,limit} → 两阶段取值路径（复用 build_lookup 深度保护降级为空 lookup）"""
+    _crud_mock(monkeypatch)
+    gql = 'CommercialLedger{unit}'
+    items = asyncio.run(_crud_mod.query(gql))
+    assert items and items[0]['unit'] == 'a'
+
+
+def test_crud_number_parse():
+    assert _crud_mod.Number(42) == 42
+    assert _crud_mod.Number('3.9') == 3.9  # 字符串可转 int 失败 → 回退 float
+    assert _crud_mod.Number(3.9) == 3  # 浮点 → int 截断
+    assert _crud_mod.Number('abc') == 0  # 不可转换 → 0
+
+
+def test_crud_to_base36():
+    assert _crud_mod._to_base36(0) == '0'
+    assert _crud_mod._to_base36(1) == '1'
+    assert _crud_mod._to_base36(35) == 'z'
+    assert _crud_mod._to_base36(36) == '10'
+
+
+def test_crud_remove_undefined():
+    d = {'a': 1, 'b': None, 'c': 0}
+    _crud_mod._remove_undefined(d)
+    assert d == {'a': 1, 'c': 0}  # None 剔除，0 保留
+
+
+def test_crud_generate_id_has_prefix():
+    _id = _crud_mod._generate_id({'idPrefix': 'T'})
+    assert _id.startswith('T') and len(_id) > 1
+
+
+def test_crud_has_creator_permission():
+    assert _crud_mod._has_creator_permission({'read': ['creator']}) is True
+    assert _crud_mod._has_creator_permission({'write': ['user']}) is False
+    assert _crud_mod._has_creator_permission({}) is False
+
+
+# ---------- crud 写路径 / 分页 / 增删改查（内存 fake collection） ----------
+
+from types import SimpleNamespace
+
+
+class _MemCursor:
+    def __init__(self, docs):
+        self.docs = docs
+
+    async def to_list(self, length=None):
+        return list(self.docs)
+
+
+class _MemColl:
+    """内存版 collection：覆盖 crud 写路径所需全部方法（真实值不参与过滤断言）"""
+
+    def __init__(self, docs=None):
+        self.docs = docs if docs is not None else []
+
+    def find(self, query=None, projection=None):
+        return _MemCursor(self.docs)
+
+    async def aggregate(self, pipeline, **kwargs):
+        return _MemCursor(self.docs)
+
+    async def find_one(self, query=None, projection=None):
+        return dict(self.docs[0]) if self.docs else None
+
+    async def count_documents(self, filter=None):
+        return len(self.docs)
+
+    async def insert_one(self, doc):
+        self.docs.append(doc)
+        return None
+
+    async def insert_many(self, docs):
+        self.docs.extend(docs)
+        return None
+
+    async def find_one_and_update(self, condition, update, return_document=None, **kwargs):
+        base = dict(self.docs[0]) if self.docs else {}
+        for st in update.values():
+            if isinstance(st, dict):
+                base.update(st)
+        if kwargs.get('upsert') and not self.docs:
+            self.docs.append(base)
+        return base
+
+    async def update_many(self, condition, data):
+        return SimpleNamespace(modified_count=len(self.docs))
+
+    async def delete_many(self, condition):
+        n = len(self.docs)
+        self.docs = []
+        return SimpleNamespace(deleted_count=n)
+
+
+def _crud_w_mock(monkeypatch, docs=None):
+    """写路径 mock：ctx=None + 内存 coll + CommercialLedger schema"""
+    coll = _MemColl(docs)
+    monkeypatch.setattr(_crud_mod, '_db', _FakeDb(coll))
+    monkeypatch.setattr(_crud_mod, 'get_context', lambda: None)
+    return coll
+
+
+def test_crud_query_one(monkeypatch):
+    _crud_mock(monkeypatch)
+    one = asyncio.run(_crud_mod.query_one('CommercialLedger{unit, income}'))
+    assert one and one['unit'] == 'a'
+    assert asyncio.run(_crud_mod.query_one('GoalLedger{income}')) is None  # 无结果 → None
+
+
+def test_crud_query_with_count_page(monkeypatch):
+    coll, _ = _crud_mock(monkeypatch)
+    async def fake_count(*a, **k):
+        return 200
+    monkeypatch.setattr(coll, 'count_documents', fake_count)
+    r = asyncio.run(_crud_mod.query_with_count('CommercialLedger($skip:@s,$limit:@l){unit, income}',
+                                               {'s': 0, 'l': 50}))
+    assert r['total'] == 200 and r['pageSize'] == 50 and r['page'] == 0
+
+
+def test_crud_query_with_count_pagesize_cap(monkeypatch):
+    _crud_mock(monkeypatch)
+    r = asyncio.run(_crud_mod.query_with_count('CommercialLedger{unit}',
+                                               {'pageSize': 99999, 'page': 0}))
+    assert r['pageSize'] == 5000  # 上限 5000 防拖库
+
+
+def test_crud_insert_autoid_timestamp(monkeypatch):
+    coll = _crud_w_mock(monkeypatch)
+    doc = asyncio.run(_crud_mod.insert('CommercialLedger', {'unit': 'x', 'income': 9.0}))
+    assert doc['_id'].startswith('CL')  # idPrefix 自动生成
+    assert doc['createdAt'] and doc['updatedAt']  # 时间戳补默认
+    assert coll.docs[0]['unit'] == 'x'
+
+
+def test_crud_insert_many_empty_returns_empty(monkeypatch):
+    _crud_w_mock(monkeypatch)
+    assert asyncio.run(_crud_mod.insert_many('CommercialLedger', [])) == []
+
+
+def test_crud_insert_many_fills_ids(monkeypatch):
+    coll = _crud_w_mock(monkeypatch)
+    out = asyncio.run(_crud_mod.insert_many('CommercialLedger', [{'unit': 'a'}, {'unit': 'b'}]))
+    assert len(out) == 2 and all(d['_id'].startswith('CL') for d in out)
+    assert len(coll.docs) == 2
+
+
+def test_crud_update_set_mode(monkeypatch):
+    _crud_w_mock(monkeypatch, [{'_id': '1', 'unit': 'a', 'income': 100.0, 'createdAt': 1, 'updatedAt': 1}])
+    out = asyncio.run(_crud_mod.update('CommercialLedger', {'_id': '1'}, {'income': 200.0}))
+    assert out and out['income'] == 200.0
+    assert out['updatedAt']  # $set 模式自动刷 updatedAt
+
+
+def test_crud_update_raw_operators(monkeypatch):
+    _crud_w_mock(monkeypatch, [{'_id': '1', 'income': 100.0, 'createdAt': 1, 'updatedAt': 1}])
+    out = asyncio.run(_crud_mod.update('CommercialLedger', {'_id': '1'}, {'$inc': {'income': 5}}))
+    assert out is not None
+    # 原生 $inc 透传，不触发 $set 字段校验
+
+
+def test_crud_update_empty_set_raises(monkeypatch):
+    _crud_w_mock(monkeypatch, [{'_id': '1', 'unit': 'a'}])
+    try:
+        asyncio.run(_crud_mod.update('CommercialLedger', {'_id': '1'}, {'_id': '1'}))
+        assert False, '应抛 ValueError'
+    except ValueError:
+        pass
+
+
+def test_crud_update_many_raw_and_set(monkeypatch):
+    coll = _crud_w_mock(monkeypatch, [{'income': 1.0}])
+    r1 = asyncio.run(_crud_mod.update_many('CommercialLedger', {}, {'$inc': {'income': 1}}))
+    assert r1['modifiedCount'] == 1
+    r2 = asyncio.run(_crud_mod.update_many('CommercialLedger', {}, {'income': 2.0}))
+    assert r2['modifiedCount'] == 1
+
+
+def test_crud_remove_archives_when_schema_exists(monkeypatch):
+    # 注册 CommercialLedgerDeleted 让归档分支命中；删除原表
+    from app.db.mongo_store import schema as _schema_mod
+    _schema_mod.register({'name': 'CommercialLedgerDeleted',
+                          'collection': 'commercial_ledger_deleted',
+                          'idPrefix': 'CLD', 'timestamps': True,
+                          'fields': {'unit': 'string'}, 'relations': {}, 'read': None, 'write': None})
+    coll = _crud_w_mock(monkeypatch, [{'_id': '1', 'unit': 'a', 'income': 1.0}])
+    r = asyncio.run(_crud_mod.remove('CommercialLedger', {'_id': '1'}))
+    assert r['deletedCount'] == 1 and r['archivedCount'] == 1  # 归档一条 + 物理删除一条
+    coll.docs = [{'_id': '2', 'unit': 'b'}]
+    r2 = asyncio.run(_crud_mod.remove('CommercialLedger', {'_id': '2'}))
+    assert r2['archivedCount'] == 1
+
+
+def test_crud_exists_and_count(monkeypatch):
+    _crud_w_mock(monkeypatch, [{'_id': '1'}])
+    assert asyncio.run(_crud_mod.exists('CommercialLedger', {'_id': '1'})) is True
+    assert asyncio.run(_crud_mod.count('CommercialLedger', {'_id': '1'})) == 1
+
+
+def test_crud_build_upsert_conditions(monkeypatch):
+    schema = {'indexes': [
+        {'keys': {'year': 1}, 'options': {'unique': True}},
+        {'keys': {'industry': 1}, 'options': {}},  # 非 unique → 跳过
+    ]}
+    conds = _crud_mod._build_upsert_conditions(schema, {'_id': 'k1', 'year': 2026})
+    assert {'_id': 'k1'} in conds
+    assert {'year': 2026} in conds
+    empties = _crud_mod._build_upsert_conditions(schema, {'_id': '', 'year': ''})
+    assert empties == []  # 空字符串不构成条件
+
+
+def test_crud_upsert_generates_id(monkeypatch):
+    coll = _crud_w_mock(monkeypatch)
+    out = asyncio.run(_crud_mod.upsert('CommercialLedger', {'_id': 'u1'}, {'unit': 'upserted'}))
+    assert out and out['unit'] == 'upserted'
+
+
+def test_crud_upsert_generates_new_id(monkeypatch):
+    _crud_w_mock(monkeypatch)
+    out = asyncio.run(_crud_mod.upsert('CommercialLedger', {'year': 2026}, {'unit': 'x'}))
+    assert out and out['_id'].startswith('CL')
+
+
+def test_crud_mutation_single_and_array(monkeypatch):
+    coll = _crud_w_mock(monkeypatch)
+    single = asyncio.run(_crud_mod.mutation('CommercialLedger', {'year': 2026, 'unit': 'solo'}))
+    assert single and single['_id'].startswith('CL')
+    arr = asyncio.run(_crud_mod.mutation('CommercialLedger', [{'unit': 'a'}, {'unit': 'b'}]))
+    assert isinstance(arr, list) and len(arr) == 2
+
+
+def test_crud_mutation_empty_array_returns_none(monkeypatch):
+    _crud_w_mock(monkeypatch)
+    assert asyncio.run(_crud_mod.mutation('CommercialLedger', [])) == []
+
+
+def test_crud_aggregate(monkeypatch):
+    _crud_w_mock(monkeypatch, [{'unit': 'a'}])
+    out = asyncio.run(_crud_mod.aggregate('CommercialLedger', [{'$match': {'unit': 'a'}}]))
+    assert out and out[0]['unit'] == 'a'

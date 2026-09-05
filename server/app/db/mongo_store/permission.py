@@ -67,13 +67,16 @@ def evaluate(ctx, role_list, doc=_MISSING):
             return True
 
     # ② 创作者匹配
-    if 'creator' in role_list:
-        if doc is _MISSING:
-            return True
-        if doc and ctx.get('userId') and doc.get('createdBy') == ctx.get('userId'):
-            return True
+    return _match_creator(ctx, doc, role_list)
 
-    return False
+
+def _match_creator(ctx, doc, role_list):
+    """创作者伪角色匹配（doc 语义见 evaluate 文档）"""
+    if 'creator' not in role_list:
+        return False
+    if doc is _MISSING:
+        return True
+    return bool(doc and ctx.get('userId') and doc.get('createdBy') == ctx.get('userId'))
 
 
 # ─── Schema 级检查 ────────────────────────────────────────────

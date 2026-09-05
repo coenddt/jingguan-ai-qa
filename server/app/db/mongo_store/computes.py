@@ -137,15 +137,10 @@ async def _run_async_fns(items, schema, ctx):
             await result
 
 
-def _merge_depends_into_ast(ast, schema):
-    """收集所有 asyncFn 计算列的 depends GQL 片段，合并注入到查询 AST 中"""
+def _collect_rel_deps(schema):
+    """收集所有 asyncFn 计算列 depends 中的关系字段需求 { rel_name → set(fields) }"""
     cache = _ensure_cache(schema)
-    if not cache['async_fn_list']:
-        return {'relations': {}}
-
-    # rel_deps: { rel_name → set(fields) }，空 set = 整条文档
     rel_deps: dict = {}
-
     for entry in cache['async_fn_list']:
         for dep in entry['depends'] or []:
             trimmed = (dep or '').strip()
@@ -164,11 +159,11 @@ def _merge_depends_into_ast(ast, schema):
                 if trimmed not in schema['relations']:
                     continue
                 rel_deps.setdefault(trimmed, set())
+    return rel_deps
 
-    if not rel_deps:
-        return {'relations': {}}
 
-    # ── 合并到 AST ──
+def _inject_into_ast(ast, rel_deps):
+    """把关系字段需求合并注入到 AST，返回注入信息"""
     if 'relations' not in ast:
         ast['relations'] = {}
     inject_info: dict[str, dict[str, Any]] = {'relations': {}}
@@ -191,6 +186,19 @@ def _merge_depends_into_ast(ast, schema):
     return inject_info
 
 
+def _merge_depends_into_ast(ast, schema):
+    """收集所有 asyncFn 计算列的 depends GQL 片段，合并注入到查询 AST 中"""
+    cache = _ensure_cache(schema)
+    if not cache['async_fn_list']:
+        return {'relations': {}}
+
+    rel_deps = _collect_rel_deps(schema)
+    if not rel_deps:
+        return {'relations': {}}
+
+    return _inject_into_ast(ast, rel_deps)
+
+
 def _strip_dep_injected(items, inject_info, schema):
     """从结果中裁剪依赖注入的字段（不返回客户端）"""
     if not inject_info or not inject_info['relations']:
@@ -208,6 +216,198 @@ def _strip_dep_injected(items, inject_info, schema):
             elif isinstance(rel_val, dict):
                 for f in injected:
                     rel_val.pop(f, None)
+
+
+def _collect_needed(ast_node, cache):
+    """GQL 请求字段 + fn 计算列依赖字段（去重）"""
+    needed = list(ast_node['fields'])
+    seen = set(needed)
+    for entry in cache['fn_list']:
+        for dep in entry['depends']:
+            if dep not in seen:
+                seen.add(dep)
+                needed.append(dep)
+    return needed
+
+
+def _collect_dot(ast_node):
+    """收集点号嵌套字段信息 { root → [subPath, ...] }"""
+    dot_fields: dict = {}
+    for f in ast_node['fields']:
+        if '.' in f:
+            root, sub = f.split('.', 1)
+            dot_fields.setdefault(root, []).append(sub)
+    return dot_fields
+
+
+def _fill_defaults(doc, cache, needed, dot_fields):
+    """补字段默认值（含点号字段的根字段）"""
+    for key in needed:
+        if key not in doc or doc[key] is None:
+            defn = cache['field_defaults'].get(key)
+            if defn is not None:
+                doc[key] = _resolve_default(defn)
+    for root in dot_fields:
+        if root not in doc or doc[root] is None:
+            defn = cache['field_defaults'].get(root)
+            if defn is not None:
+                doc[root] = _resolve_default(defn)
+
+
+def _fill_dot_nested(doc, schema, root, sub_path):
+    """填充嵌套 object 的点号精确子字段默认值"""
+    field = schema['fields'].get(root)
+    if not (isinstance(field, dict) and field.get('type') == 'object' and field.get('fields')
+            and isinstance(doc.get(root), dict)):
+        return
+    sub_field_def = field['fields'].get(sub_path)
+    if sub_field_def and (sub_path not in doc[root] or doc[root][sub_path] is None):
+        sub_type = sub_field_def if isinstance(sub_field_def, str) else sub_field_def.get('type')
+        defn = sub_field_def.get('default') if isinstance(sub_field_def, dict) and sub_field_def.get('default') is not None else get_default(sub_type)
+        if defn is not None:
+            doc[root][sub_path] = _resolve_default(defn)
+
+
+def _fill_nested_objects(doc, schema, needed):
+    """递归填充嵌套 object 子字段默认值（含点号精确子字段）"""
+    for key in needed:
+        if '.' in key:
+            root, sub_path = key.split('.', 1)
+            _fill_dot_nested(doc, schema, root, sub_path)
+        else:
+            field = schema['fields'].get(key)
+            if isinstance(field, dict) and field.get('type') == 'object' and field.get('fields') \
+                    and isinstance(doc.get(key), dict):
+                _fill_nested_defaults(doc[key], field['fields'])
+
+
+def _run_computes(doc, cache):
+    """跑 fn 计算列，再补计算列默认值"""
+    for entry in cache['fn_list']:
+        doc[entry['key']] = entry['fn'](doc)
+    for entry in cache['fn_list']:
+        key = entry['key']
+        if key not in doc or doc[key] is None:
+            defn = cache['compute_defaults'].get(key)
+            if defn is not None:
+                doc[key] = _resolve_default(defn)
+
+
+def _descend_relations(doc, ast_node, schema, ctx):
+    """递归下钻嵌套关系文档（跳过不可读关系）"""
+    rel_names = list(ast_node['relations'].keys())
+    readable_relations = get_readable_relations(schema, ctx) if ctx else None
+    for rel_name in rel_names:
+        if readable_relations is not None and rel_name not in readable_relations:
+            continue
+        rel_ast = ast_node['relations'][rel_name]
+        rel_def = schema['relations'].get(rel_name)
+        if not rel_def:
+            continue
+        rel_schema = _get_schema(rel_def['model'])
+        rel_val = doc.get(rel_name)
+        if isinstance(rel_val, list):
+            for rel_doc in rel_val:
+                process_node(rel_doc, rel_ast, rel_schema, ctx)
+        elif isinstance(rel_val, dict):
+            process_node(rel_val, rel_ast, rel_schema, ctx)
+
+
+def _compute_keep(ast_node, dot_fields):
+    """仅保留 GQL 字段 + 关系名 + 点号根字段（_id 始终保留）"""
+    keep = set(ast_node['fields'])
+    for root in dot_fields:
+        keep.add(root)
+    for rel_name in ast_node['relations']:
+        keep.add(rel_name)
+    keep.add('_id')
+    return keep
+
+
+def _prune_unreadable_relations(ast_node, readable_relations, keep):
+    """从 keep 中移除不可读的关系"""
+    if readable_relations is None:
+        return
+    for rel_name in ast_node['relations']:
+        if rel_name not in readable_relations:
+            keep.discard(rel_name)
+
+
+def _apply_readable_prune(doc, ast_node, schema, ctx, keep):
+    """从 keep 中移除用户不可读的字段/计算列/关系（读权限，不含 Owner 级）"""
+    readable_fields = get_readable_fields(schema, ctx)
+    readable_computes = get_readable_computes(schema, ctx)
+    readable_relations = get_readable_relations(schema, ctx)
+
+    for key in ast_node['fields']:
+        if key == '_id':
+            continue
+        if (key in schema['fields'] and readable_fields is not None and key not in readable_fields
+                or key in schema.get('computes', {}) and readable_computes is not None and key not in readable_computes):
+            keep.discard(key)
+    _prune_unreadable_relations(ast_node, readable_relations, keep)
+
+
+def _prune_owner_field_read(doc, ast_node, schema, ctx, keep):
+    """字段级 Owner read 校验（含计算列、关系）"""
+    for key in ast_node['fields']:
+        if key == '_id' or key not in keep:
+            continue
+        field = schema['fields'].get(key)
+        if field and field.get('read') and evaluate(ctx, field['read'], doc) is False:
+            keep.discard(key)
+
+
+def _prune_owner_compute_read(doc, schema, ctx, keep):
+    """计算列 Owner read 校验"""
+    for key, comp in (schema.get('computes') or {}).items():
+        if key not in keep:
+            continue
+        if comp and comp.get('read') and evaluate(ctx, comp['read'], doc) is False:
+            keep.discard(key)
+
+
+def _prune_owner_relation_read(doc, ast_node, schema, ctx, keep):
+    """关系 Owner read 校验"""
+    for rel_name in ast_node['relations']:
+        if rel_name not in keep:
+            continue
+        rel = schema['relations'].get(rel_name)
+        if rel and rel.get('read') and evaluate(ctx, rel['read'], doc) is False:
+            keep.discard(rel_name)
+
+
+def _apply_owner_read_prune(doc, ast_node, schema, ctx, keep):
+    """Owner 级 read 校验：逐字段/计算列/关系传入 doc 做 creator 检查"""
+    _prune_owner_field_read(doc, ast_node, schema, ctx, keep)
+    _prune_owner_compute_read(doc, schema, ctx, keep)
+    _prune_owner_relation_read(doc, ast_node, schema, ctx, keep)
+
+
+def _apply_permissions(doc, ast_node, schema, ctx, keep):
+    """从 keep 中移除当前用户不可读的字段/计算列/关系（含 Owner 级 read 校验）"""
+    if not ctx:
+        return
+    _apply_readable_prune(doc, ast_node, schema, ctx, keep)
+    _apply_owner_read_prune(doc, ast_node, schema, ctx, keep)
+
+
+def _prune_doc(doc, keep):
+    """删除不保留的顶层字段"""
+    for key in list(doc.keys()):
+        if key not in keep:
+            del doc[key]
+
+
+def _prune_dot_subfields(doc, dot_fields):
+    """裁剪点号字段父对象中未请求的子字段"""
+    for root, subs in dot_fields.items():
+        obj = doc.get(root)
+        if isinstance(obj, dict):
+            sub_keep = set(subs)
+            for sub_key in list(obj.keys()):
+                if sub_key not in sub_keep:
+                    del obj[sub_key]
 
 
 def process_node(doc, ast_node, schema, ctx):
@@ -230,141 +430,26 @@ def process_node(doc, ast_node, schema, ctx):
     # 展平 object 子字段花括号语法 → dot-notation
     flatten_object_fields(ast_node, schema)
 
-    # ── 计算 needed fields（请求字段 + fn 依赖字段，去重） ──
-    needed_arr = []
-    seen = set()
-    for f in ast_node['fields']:
-        seen.add(f)
-        needed_arr.append(f)
-    for entry in cache['fn_list']:
-        for dep in entry['depends']:
-            if dep not in seen:
-                seen.add(dep)
-                needed_arr.append(dep)
+    # ① 收集 needed 字段（请求字段 + fn 依赖）与点号字段信息
+    needed_arr = _collect_needed(ast_node, cache)
+    dot_fields = _collect_dot(ast_node)
 
-    # 收集点号嵌套字段信息 { root → [subPath, ...] }
-    dot_fields: dict = {}
-    for f in ast_node['fields']:
-        if '.' in f:
-            root, sub = f.split('.', 1)
-            dot_fields.setdefault(root, []).append(sub)
+    # ② 补字段默认值 + 递归填充嵌套 object 子字段
+    _fill_defaults(doc, cache, needed_arr, dot_fields)
+    _fill_nested_objects(doc, schema, needed_arr)
 
-    # ① 补默认值（含点号字段的根字段）
-    for key in needed_arr:
-        if key not in doc or doc[key] is None:
-            defn = cache['field_defaults'].get(key)
-            if defn is not None:
-                doc[key] = _resolve_default(defn)
-    for root in dot_fields:
-        if root not in doc or doc[root] is None:
-            defn = cache['field_defaults'].get(root)
-            if defn is not None:
-                doc[root] = _resolve_default(defn)
-
-    # ①.5 递归填充嵌套 object 子字段（含点号精确子字段）
-    for key in needed_arr:
-        if '.' in key:
-            root, sub_path = key.split('.', 1)
-            field = schema['fields'].get(root)
-            if isinstance(field, dict) and field.get('type') == 'object' and field.get('fields') \
-                    and isinstance(doc.get(root), dict):
-                sub_field_def = field['fields'].get(sub_path)
-                if sub_field_def and (sub_path not in doc[root] or doc[root][sub_path] is None):
-                    sub_type = sub_field_def if isinstance(sub_field_def, str) else sub_field_def.get('type')
-                    defn = sub_field_def.get('default') if isinstance(sub_field_def, dict) and sub_field_def.get('default') is not None else get_default(sub_type)
-                    if defn is not None:
-                        doc[root][sub_path] = _resolve_default(defn)
-        else:
-            field = schema['fields'].get(key)
-            if isinstance(field, dict) and field.get('type') == 'object' and field.get('fields') \
-                    and isinstance(doc.get(key), dict):
-                _fill_nested_defaults(doc[key], field['fields'])
-
-    # ② 跑 fn 计算列
-    for entry in cache['fn_list']:
-        doc[entry['key']] = entry['fn'](doc)
-
-    # ③ 补计算列默认值
-    for entry in cache['fn_list']:
-        key = entry['key']
-        if key not in doc or doc[key] is None:
-            defn = cache['compute_defaults'].get(key)
-            if defn is not None:
-                doc[key] = _resolve_default(defn)
+    # ③ 跑 fn 计算列 + 补计算列默认值
+    _run_computes(doc, cache)
 
     # ④ 递归下钻（跳过不可读的关系）
-    rel_names = list(ast_node['relations'].keys())
-    readable_relations = get_readable_relations(schema, ctx) if ctx else None
-    for rel_name in rel_names:
-        if readable_relations is not None and rel_name not in readable_relations:
-            continue
-        rel_ast = ast_node['relations'][rel_name]
-        rel_def = schema['relations'].get(rel_name)
-        if not rel_def:
-            continue
-        rel_schema = _get_schema(rel_def['model'])
-        rel_val = doc.get(rel_name)
-        if isinstance(rel_val, list):
-            for rel_doc in rel_val:
-                process_node(rel_doc, rel_ast, rel_schema, ctx)
-        elif isinstance(rel_val, dict):
-            process_node(rel_val, rel_ast, rel_schema, ctx)
+    _descend_relations(doc, ast_node, schema, ctx)
 
-    # ⑤ 裁剪 — 只保留 GQL 字段 + 关系名（_id 始终保留）
-    keep = set(ast_node['fields'])
-    for root in dot_fields:
-        keep.add(root)
-    for rel_name in rel_names:
-        keep.add(rel_name)
-    keep.add('_id')
+    # ⑤ 计算 keep（GQL 字段 + 关系名 + 点号根字段 + _id）
+    keep = _compute_keep(ast_node, dot_fields)
 
-    # ⑥ 权限裁剪 — 从 keep 中移除当前用户不可读的字段/计算列/关系
-    if ctx:
-        readable_fields = get_readable_fields(schema, ctx)
-        readable_computes = get_readable_computes(schema, ctx)
+    # ⑥ 权限裁剪（读权限 + Owner 级 read 校验）
+    _apply_permissions(doc, ast_node, schema, ctx, keep)
 
-        for key in ast_node['fields']:
-            if key == '_id':
-                continue
-            if key in schema['fields'] and readable_fields is not None and key not in readable_fields or key in schema.get('computes', {}) and readable_computes is not None and key not in readable_computes:
-                keep.discard(key)
-        # 关系中不可读的也从 keep 中移除
-        for rel_name in rel_names:
-            if readable_relations is not None and rel_name not in readable_relations:
-                keep.discard(rel_name)
-
-        # ⑥.5 Owner-based 字段级权限 — 对每个字段单独传入 doc 做 creator 检查
-        for key in ast_node['fields']:
-            if key == '_id':
-                continue
-            if key not in keep:
-                continue
-            field = schema['fields'].get(key)
-            if field and field.get('read') and evaluate(ctx, field['read'], doc) is False:
-                keep.discard(key)
-        # 计算列同理
-        for key, comp in (schema.get('computes') or {}).items():
-            if key not in keep:
-                continue
-            if comp and comp.get('read') and evaluate(ctx, comp['read'], doc) is False:
-                keep.discard(key)
-        # 关系同理
-        for rel_name in rel_names:
-            if rel_name not in keep:
-                continue
-            rel = schema['relations'].get(rel_name)
-            if rel and rel.get('read') and evaluate(ctx, rel['read'], doc) is False:
-                keep.discard(rel_name)
-
-    for key in list(doc.keys()):
-        if key not in keep:
-            del doc[key]
-
-    # 裁剪点号字段父对象中未请求的子字段
-    for root, subs in dot_fields.items():
-        obj = doc.get(root)
-        if isinstance(obj, dict):
-            sub_keep = set(subs)
-            for sub_key in list(obj.keys()):
-                if sub_key not in sub_keep:
-                    del obj[sub_key]
+    # ⑦ 裁剪字段 + 点号父对象中未请求的子字段
+    _prune_doc(doc, keep)
+    _prune_dot_subfields(doc, dot_fields)

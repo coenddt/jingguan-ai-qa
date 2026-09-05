@@ -16,6 +16,9 @@ from app.services.json_schema_shell import ShellError, attach_schema, validate
 from app.services.query_guard import GuardError, verify
 from app.db.mongo_store import store
 from app.services import llm_client
+from app.services.qa_service import (
+    _active_model, _build_chart, _build_findings, _build_stats,
+    _ensure_session, _round_rows)
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -370,3 +373,129 @@ def test_chat_non_200(monkeypatch):
     monkeypatch.setattr(llm_client, '_client', FakeClient())
     with pytest.raises(RuntimeError):
         asyncio.run(llm_client.chat([], base_url='https://api.deepseek.com/v1', api_key='k', model='m'))
+
+
+# ---------- qa_service：私有纯函数 + store mock ----------
+
+def test_round_rows_rounds_floats_keeps_others():
+    out = _round_rows([{'a': 1.23456, 'b': 'x', 'c': 3}])
+    assert out[0]['a'] == round(1.23456, 2) and out[0]['b'] == 'x' and out[0]['c'] == 3
+
+
+def test_build_stats_empty_or_no_numeric():
+    assert _build_stats([], None)['count'] == 0
+    empty_vals = _build_stats([{'a': 'x'}, {'a': 'y'}], 'a')  # 无数值
+    assert empty_vals['max'] == 0 and empty_vals['max_of'] == '-'
+
+
+def test_build_stats_normal_with_max_of():
+    stats = _build_stats([{'unit': 'a', 'income': 10}, {'unit': 'b', 'income': 20}], 'income')
+    assert stats['count'] == 2 and stats['avg'] == 15.0 and stats['max'] == 20.0
+    assert stats['max_of'] == 'b' and stats['min_of'] == 'a'
+
+
+def test_build_chart_empty_rows():
+    assert _build_chart('q', {'mode': 'list', 'fields': ['a']}, []) is None
+
+
+def test_build_chart_aggregate_default_bar():
+    from app.services.query_guard import measure_key as _mk
+    q = {'mode': 'aggregate', 'groupBy': ['unit'], 'measures': [{'op': 'sum', 'field': 'income'}]}
+    mk = _mk(q['measures'][0])
+    rows = [{'unit': 'a', mk: 100}, {'unit': 'b', mk: 200}]
+    chart = _build_chart('普通问题', q, rows)
+    assert chart['type'] == 'bar' and chart['series'] == [100.0, 200.0]
+
+
+def test_build_chart_aggregate_pie_by_keyword():
+    q = {'mode': 'aggregate', 'groupBy': ['unit'], 'measures': [{'op': 'count', 'field': ''}]}
+    rows = [{'unit': 'a', 'x': 1}]
+    chart = _build_chart('各平台的占比', q, rows)
+    assert chart['type'] == 'pie'
+
+
+def test_build_chart_time_dim_line():
+    q = {'mode': 'aggregate', 'groupBy': ['signDate'], 'measures': [{'op': 'sum', 'field': 'income'}]}
+    rows = [{'signDate': '2024-01-01', 'v': 5}, {'signDate': '2024-01-02', 'v': 6}]
+    assert _build_chart('趋势', q, rows)['type'] == 'line'
+
+
+def test_build_chart_list_no_numeric_none():
+    q = {'mode': 'list', 'fields': ['unit']}
+    assert _build_chart('q', q, [{'unit': 'a'}]) is None
+
+
+def test_build_chart_list_with_numeric():
+    q = {'mode': 'list', 'fields': ['unit', 'income']}
+    chart = _build_chart('q', q, [{'unit': 'a', 'income': 300}])
+    assert chart['type'] == 'bar' and chart['series'] == [300.0]
+
+
+def test_build_findings_empty():
+    assert _build_findings({'count': 0}, 'income') == ['未查询到符合条件的数据']
+
+
+def test_build_findings_normal():
+    stats = {'count': 5, 'avg': 1.2, 'max': 3, 'max_of': 'b', 'min': 1, 'min_of': 'a'}
+    out = _build_findings(stats, 'income')
+    assert '共 5 条' in out[0] and '最大值 3' in out[1]
+
+
+def test_active_model_ok(monkeypatch):
+    import asyncio
+    async def fake(gql, params=None):
+        return {'enabled': True, 'name': 'M', 'platform': 'deepseek', 'baseUrl': '',
+                'apiKey': 'k', 'modelName': 'deepseek-chat'}
+    monkeypatch.setattr(store, 'query_one', fake)
+    m = asyncio.run(_active_model())
+    assert m['modelName'] == 'deepseek-chat'
+
+
+def test_active_model_no_enabled(monkeypatch):
+    import asyncio
+    from app.errors import BusinessError
+    async def fake(gql, params=None):
+        return None
+    monkeypatch.setattr(store, 'query_one', fake)
+    with pytest.raises(BusinessError):
+        asyncio.run(_active_model())
+
+
+def test_active_model_bad_platform(monkeypatch):
+    import asyncio
+    from app.errors import BusinessError
+    async def fake(gql, params=None):
+        return {'enabled': True, 'name': 'M', 'platform': 'unknown', 'apiKey': 'k'}
+    monkeypatch.setattr(store, 'query_one', fake)
+    with pytest.raises(BusinessError):
+        asyncio.run(_active_model())
+
+
+def test_ensure_session_existing(monkeypatch):
+    import asyncio
+    async def fake(gql, params=None):
+        return {'_id': 's1', 'title': 't'}
+    monkeypatch.setattr(store, 'query_one', fake)
+    s = asyncio.run(_ensure_session('s1', '问'))
+    assert s['_id'] == 's1'
+
+
+def test_ensure_session_missing(monkeypatch):
+    import asyncio
+    from app.errors import BusinessError
+    async def fake(gql, params=None):
+        return None
+    monkeypatch.setattr(store, 'query_one', fake)
+    with pytest.raises(BusinessError):
+        asyncio.run(_ensure_session('gone', '问'))
+
+
+def test_ensure_session_create(monkeypatch):
+    import asyncio
+    created = []
+    async def fake_insert(schema_name, data):
+        created.append((schema_name, data))
+        return {'_id': 'new'}
+    monkeypatch.setattr(store, 'insert', fake_insert)
+    s = asyncio.run(_ensure_session(None, '新问题'))
+    assert s['_id'] == 'new' and created[0][0] == 'QaSession'

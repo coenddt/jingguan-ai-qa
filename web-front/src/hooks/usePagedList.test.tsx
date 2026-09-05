@@ -28,7 +28,7 @@ describe('usePagedList', () => {
   })
 
   it('changePage 用当前 filters 请求新页', async () => {
-    const fetcher = vi.fn(async (q: { page: number; pageSize: number }) =>
+    const fetcher = vi.fn(async () =>
       ({ items: [{ id: 99 }], total: 3 }))
     const { result } = renderHook(() => usePagedList(fetcher, { pageSize: 5 }))
     await act(async () => { await result.current.search({ kw: 'x' }) })

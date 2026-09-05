@@ -80,7 +80,7 @@ export default function DevLogCard({ resp }: Props) {
 
       {/* ③ 数据发现 */}
       <Module num={2} title="数据发现">
-        {!!(resp.findings ?? []).length ? (
+        {(resp.findings ?? []).length ? (
           <div className="mod-body">{(resp.findings ?? []).map((f, i) => <div key={i} className="dot-li">{f}</div>)}</div>
         ) : <BlkEmpty text="无数据发现" />}
       </Module>
@@ -88,7 +88,7 @@ export default function DevLogCard({ resp }: Props) {
       {/* ④ 数据表格（总行数取 row_count 更准确） */}
       {(resp.columns?.length || resp.rows?.length) ? (
         <Module num={3} title="数据表格">
-          {!!resp.rows?.length ? (
+          {resp.rows?.length ? (
             <>
               <AiDataTable columns={resp.columns ?? []} rows={resp.rows}
                 totalCount={resp.row_count ?? resp.stats?.count ?? resp.rows.length} />

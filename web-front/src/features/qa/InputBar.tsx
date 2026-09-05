@@ -70,7 +70,6 @@ export default function InputBar({ sending, sttEnabled }: Props) {
   const [quickOpen, setQuickOpen] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { listening, start } = useVoiceInput(sttEnabled)
-  const { showSnackbar } = useSnackbar()
   const ask = useAsk()
 
   const send = useCallback(() => {

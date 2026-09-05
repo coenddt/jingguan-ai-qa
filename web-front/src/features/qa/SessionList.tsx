@@ -32,7 +32,6 @@ export default function SessionList({ open, activeId, onClose, onSelect, onNew }
   const openCtxMenu = useCallback((session: SessionItem, x: number, y: number) => {
     setCtxMenu({ session, x: Math.min(x, window.innerWidth - 150), y: Math.min(y, window.innerHeight - 130) })
   }, [])
-  const closeCtxMenu = useCallback(() => setCtxMenu(null), [])
 
   // 点击菜单/触发按钮外部关闭悬停菜单
   useEffect(() => {

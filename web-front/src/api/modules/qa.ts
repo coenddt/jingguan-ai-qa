@@ -1,5 +1,5 @@
 import { http } from '../client'
-import type { DataSourceGroup, MsgItem, QaAskResp, SessionItem } from '../../types'
+import type { DataSourceGroup, MsgItem, SessionItem } from '../../types'
 
 /** 后端 SSE 事件（session/steps/step/block/done/error） */
 export interface QaStreamEvent {

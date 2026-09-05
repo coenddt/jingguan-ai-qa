@@ -1,7 +1,7 @@
 /** AI 回答结构化卡片（原型 qa-ai-card 1:1）：分析过程 → 数据发现 → 数据表格 → 数据统计 → 数据可视化 → 结论 → 页脚 → 追问
  *  流式：streaming 时按块到达顺序渲染，未到达的块显示生成中占位 */
 
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import type { QaAskResp } from '../../../types'
 import MarkdownView from '../../../components/MarkdownView'
 import { useSnackbar } from '../../../hooks/useSnackbar'
@@ -13,7 +13,6 @@ import AiStatsGrid from './AiStatsGrid'
 import AiCardFooter from './AiCardFooter'
 import AiFollowUps from './AiFollowUps'
 import AiFeedbackModal from './AiFeedbackModal'
-import TypewriterText from './TypewriterText'
 import { Module, BlkPending, BlkEmpty } from './qaBlocks'
 
 // ECharts 按需分包：仅当回复含图表时才加载图表 chunk
@@ -32,13 +31,6 @@ export default function AiCard({ resp, question, streaming, createdAt }: Props) 
   const [copied, setCopied] = useState(false)
   const [fbOpen, setFbOpen] = useState(false)
   const { showSnackbar } = useSnackbar()
-
-  // 结论打字机锁存：仅当流式期间 text 到达才启用逐字显示；历史消息（streaming=undefined）直接渲染
-  const textValue = resp.text ?? ''
-  const [typed, setTyped] = useState(false)
-  useEffect(() => {
-    if (streaming && textValue) setTyped(true)
-  }, [streaming, textValue])
 
   const toggleSteps = useCallback(() => setOpenSteps((v) => !v), [])
 
@@ -81,7 +73,7 @@ export default function AiCard({ resp, question, streaming, createdAt }: Props) 
         {/* ③ 数据表格 */}
         <Module num={2} title="数据表格">
           {hasTable ? (
-            !!resp.rows?.length ? (
+            resp.rows?.length ? (
               <AiDataTable columns={resp.columns ?? []} rows={resp.rows} totalCount={resp.stats?.count ?? 0} />
             ) : <BlkEmpty text="无表格数据" />
           ) : <BlkPending />}

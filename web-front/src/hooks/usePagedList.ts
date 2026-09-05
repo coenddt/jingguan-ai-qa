@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PageFilters, PagedQuery } from '../types'
 
-interface Options<F> {
+interface Options {
   pageSize?: number
   onError?: (message: string) => void
   errorMessage?: string
@@ -12,7 +12,7 @@ interface Options<F> {
  *  所有动作显式传参调用 load，杜绝闭包旧值；失败统一走 onError */
 export function usePagedList<T, F extends PageFilters = PageFilters>(
   fetcher: (q: PagedQuery<F>) => Promise<{ items: T[]; total: number }>,
-  options?: Options<F>,
+  options?: Options,
 ) {
   const [items, setItems] = useState<T[]>([])
   const [total, setTotal] = useState(0)

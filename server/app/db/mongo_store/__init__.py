@@ -15,11 +15,12 @@ MongoStore — 轻量 MongoDB 数据层（Python 版）
 """
 
 from . import crud, permission, pipeline, schema
+from typing import Any
 
 
-async def aggregate(schema_name, pl):
+async def aggregate(schema_name: str, pipeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """对指定 schema 执行 MongoDB 原生聚合查询"""
-    return await crud.aggregate(schema_name, pl)
+    return await crud.aggregate(schema_name, pipeline)
 
 
 _store_map = {
@@ -70,6 +71,47 @@ _store_map = {
 
 class Store:
     """以属性方式访问 _store_map，支持 store.query(...) 调用形态"""
+
+    async def query(self, gql: str, params: dict | None = None) -> list[dict[str, Any]]:
+        return await crud.query(gql, params)
+
+    async def query_one(self, gql: str, params: dict | None = None) -> dict[str, Any] | None:
+        return await crud.query_one(gql, params)
+
+    async def query_with_count(self, gql: str, params: dict | None = None) -> dict[str, Any]:
+        return await crud.query_with_count(gql, params)
+
+    async def insert(self, schema_name: str, data: dict) -> dict[str, Any]:
+        return await crud.insert(schema_name, data)
+
+    async def insert_many(self, schema_name: str, docs: list[dict]) -> list[dict[str, Any]]:
+        return await crud.insert_many(schema_name, docs)
+
+    async def update(self, schema_name: str, condition: dict, data: dict,
+                     options: dict | None = None) -> dict[str, Any] | None:
+        return await crud.update(schema_name, condition, data, options)
+
+    async def update_many(self, schema_name: str, condition: dict, data: dict) -> dict[str, Any]:
+        return await crud.update_many(schema_name, condition, data)
+
+    async def remove(self, schema_name: str, condition: dict) -> dict[str, Any]:
+        return await crud.remove(schema_name, condition)
+
+    async def exists(self, schema_name: str, condition: dict) -> bool:
+        return await crud.exists(schema_name, condition)
+
+    async def count(self, schema_name: str, filter: dict | None = None) -> int:
+        return await crud.count(schema_name, filter)
+
+    async def mutation(self, schema_name: str, data: dict | list[dict]) -> Any:
+        return await crud.mutation(schema_name, data)
+
+    async def upsert(self, schema_name: str, condition: dict, data: dict,
+                     options: dict | None = None) -> dict[str, Any] | None:
+        return await crud.upsert(schema_name, condition, data, options)
+
+    async def aggregate(self, schema_name: str, pipeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return await crud.aggregate(schema_name, pipeline)
 
     def __getattr__(self, name):
         return _store_map[name]

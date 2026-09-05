@@ -133,7 +133,7 @@ def test_build_pipeline_default_sort_count():
     assert pl[0]['$group']['_id'] == '$unit'
     assert pl[0]['$group'].get('count_all') == {'$sum': 1}
     assert {'$sort': {'count_all': -1}} in pl  # 无 sort → 默认按度量子降序
-    assert pl[-1]['$project'] == {'unit': '_id', 'count_all': 1}
+    assert pl[-1]['$project'] == {'unit': '$_id', 'count_all': 1}
 
 
 def test_build_pipeline_no_match_multi_groupby():

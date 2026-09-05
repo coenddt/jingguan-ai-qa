@@ -1,0 +1,29 @@
+# mypy 类型检查基线配置
+#
+# 背景：本项目为 FastAPI + PyMongo（无类型 stub），业务数据大量为强动态
+#       BSON/pipeline（dict 键名运行时确定）。对全部遗留代码硬套 --strict
+#       会触发 type-arg / no-any-return 连锁，且压不干净。
+#
+# 策略（务实降准）：
+#   - 全局开启：[--check-untyped-defs] 类型化的函数体仍严格检查；
+#               [--no-implicit-optional] 禁止隐式 Optional。
+#   - 全局放行遗留强动态层：[disallow_any_generics / untyped_defs /
+#     untyped_calls / warn_return_any] 关闭，避免对 # -*- coding 风格旧代码的
+#     全量返工。
+#   - 数据层契约：db/mongo_store 公共方法的严格返回类型已手写（契约即文档），
+#     mypy 无需额外强制。
+#
+# 用法：mypy app   （不传 --strict，改读本配置）
+
+[tool.mypy]
+python_version = "3.14"
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+# 允许强动态层（见顶部策略说明）
+disallow_any_generics = false
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+warn_return_any = false

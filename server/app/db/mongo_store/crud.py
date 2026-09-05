@@ -12,6 +12,7 @@ import math
 import random
 import string
 import time
+from typing import Any
 
 from pymongo import ReturnDocument
 
@@ -65,7 +66,7 @@ def _col(schema_name):
 # ─── GQL 查询 ──────────────────────────────────────────────
 
 
-async def query(gql, params=None):
+async def query(gql: str, params: dict | None = None) -> list[dict[str, Any]]:
     """
     GQL 查询（返回数组）
 
@@ -189,13 +190,13 @@ async def query(gql, params=None):
     return items
 
 
-async def query_one(gql, params=None):
+async def query_one(gql: str, params: dict | None = None) -> dict[str, Any] | None:
     """GQL 查询（返回单条）"""
     items = await query(gql, params)
     return items[0] if items else None
 
 
-async def query_with_count(gql, params=None):
+async def query_with_count(gql: str, params: dict | None = None) -> dict[str, Any]:
     """
     GQL 查询（返回 items + total + 分页元数据）
 
@@ -285,7 +286,7 @@ def _has_creator_permission(s):
     return 'creator' in (s.get('read') or []) or 'creator' in (s.get('write') or [])
 
 
-async def insert(schema_name, data):
+async def insert(schema_name: str, data: dict) -> dict[str, Any]:
     """插入一条"""
     ctx = get_context()
     s = _get_schema(schema_name)
@@ -320,7 +321,7 @@ async def insert(schema_name, data):
     return apply_defaults_and_computes(doc, s)
 
 
-async def insert_many(schema_name, docs):
+async def insert_many(schema_name: str, docs: list[dict]) -> list[dict[str, Any]]:
     """批量插入（带权限检查，自动生成 _id 和时间戳）"""
     if not isinstance(docs, list) or not docs:
         return []
@@ -355,7 +356,7 @@ async def insert_many(schema_name, docs):
     return [apply_defaults_and_computes(doc, s) for doc in processed_docs]
 
 
-async def update(schema_name, condition, data, options=None):
+async def update(schema_name: str, condition: dict, data: dict, options: dict | None = None) -> dict[str, Any] | None:
     """
     更新一条（支持原生操作符，不触发默认值）
 
@@ -416,7 +417,7 @@ async def update(schema_name, condition, data, options=None):
     return apply_defaults_and_computes(result, s) if result else None
 
 
-async def update_many(schema_name, condition, data):
+async def update_many(schema_name: str, condition: dict, data: dict) -> dict[str, Any]:
     """批量更新（支持原生操作符）"""
     ctx = get_context()
     s = _get_schema(schema_name)
@@ -448,7 +449,7 @@ async def update_many(schema_name, condition, data):
     return {'modifiedCount': result.modified_count}
 
 
-async def remove(schema_name, condition):
+async def remove(schema_name: str, condition: dict) -> dict[str, Any]:
     """删除 —— 原表数据先归档到对应 `_deleted` 附表（附 deletedAt），再物理删除原表数据"""
     ctx = get_context()
     s = _get_schema(schema_name)
@@ -482,14 +483,14 @@ async def remove(schema_name, condition):
     return {'deletedCount': result.deleted_count, 'archivedCount': archived_count}
 
 
-async def exists(schema_name, condition):
+async def exists(schema_name: str, condition: dict) -> bool:
     """判断是否存在"""
     coll = _col(schema_name)
     doc = await coll.find_one(condition, {'_id': 1})
     return doc is not None
 
 
-async def count(schema_name, filter=None):
+async def count(schema_name: str, filter: dict | None = None) -> int:
     """统计符合条件的文档数量"""
     coll = _col(schema_name)
     return await coll.count_documents(filter or {})
@@ -654,7 +655,7 @@ async def _mutation_one(schema, data):
     return apply_defaults_and_computes(parent_doc, schema)
 
 
-async def mutation(schema_name, data):
+async def mutation(schema_name: str, data: dict | list[dict]) -> Any:
     """
     mutation — 智能持久化
 
@@ -674,7 +675,7 @@ async def mutation(schema_name, data):
     return results if is_array else results[0]
 
 
-async def upsert(schema_name, condition, data, options=None):
+async def upsert(schema_name: str, condition: dict, data: dict, options: dict | None = None) -> dict[str, Any] | None:
     """
     upsert — 显式条件 upsert
 
@@ -726,7 +727,7 @@ async def upsert(schema_name, condition, data, options=None):
     return apply_defaults_and_computes(result, s) if result else None
 
 
-async def aggregate(schema_name, pipeline):
+async def aggregate(schema_name: str, pipeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """对指定 schema 执行 MongoDB 原生聚合查询"""
     s = _get_schema(schema_name)
     coll = _get_db()[s['collection']]

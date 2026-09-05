@@ -1,29 +1,29 @@
 ---
 name: "web-front-extreme-self-check-report"
-description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造项 + 云端真实浏览器实测 + Playwright E2E + ESLint/audit 门禁。B 级达成，总分 4.20。"
+description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造项 + 云端真实浏览器实测 + E2E/ESLint/audit 门禁。B 级达成，总分 4.45。"
 ---
 
 # Web 前端极致自检报告 · 2026-09-05
 
 ## 结论
 
-**总分 4.20 / 5.0　级别 B（合格，可发布）**
+**总分 4.45 / 5.0　级别 B（合格，可发布，逼近 A 档）**
 
 ```
-4×0.25(功能) + 4×0.15(性能) + 4×0.15(安全) + 4×0.10(健壮)
+5×0.25(功能) + 4×0.15(性能) + 4×0.15(安全) + 4×0.10(健壮)
 + 5×0.10(代码) + 5×0.10(测试) + 4×0.10(体验) + 4×0.05(a11y)
-= 1.00 + 0.60 + 0.60 + 0.40 + 0.50 + 0.50 + 0.40 + 0.20 = 4.20
+= 1.25 + 0.60 + 0.60 + 0.40 + 0.50 + 0.50 + 0.40 + 0.20 = 4.45
 ```
 
 **否决项核对**：安全 4（>1）、无错误数据、无主流程崩溃 → 无否决。
 
-> 历史订正：加权和依次为 3.80 → 3.95（性能 3→4）→ 4.00（a11y 3→4）→ 4.10（测试 4→5，Playwright E2E）→ **4.20（代码 4→5，接入 ESLint 严格门禁并清死代码）**。
+> 历史订正：加权和依次为 3.80 → 3.95 → 4.00 → 4.10（测试 4→5，Playwright E2E）→ 4.20（代码 4→5，ESLint 门禁）→ **4.45（功能 4→5，E2E 覆盖成功+失败+输入守卫三态）**。
 
 ## 分维评分表
 
 | 维度 | 分值 | 证据 | 备注 |
 |------|------|------|------|
-| 功能正确性 | 4 | 静态走查 + 真实浏览器 + E2E | 登录→/qa 全流程真实浏览器走通，SSE 处理完整、三态齐全；Playwright E2E 已自动化覆盖 QA 关键路径 |
+| 功能正确性 | 5 | 静态走查 + 真实浏览器 + E2E 三态 | 登录→/qa 全流程走通；E2E 覆盖成功流(结论/表格/追问)+失败流(SSE error→占位卡移除+兜底提示)+输入守卫(空白禁发)，SSE 三态齐全 |
 | 性能 | 4 | 云端真实浏览器实测 | LCP/FCP≈1032ms、load≈53ms、CLS=0；INP 受浏览器缓存污染未取到干净样本 |
 | 安全 | 4 | 全仓扫描 + npm audit | 0 dangerHTML/eval；DOMPurify 全去标签；`audit:gate`（生产依赖 high 门禁）当前通过(见遗留) |
 | 健壮性 | 4 | 代码走查 | ErrorBoundary+路由复位；AbortController；无断网降级 |
@@ -41,7 +41,7 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 | 性能 | 修复 DevLogCard 静态引入 charts 使 ECharts 退出首屏 | `features/qa/DevLogCard.tsx` |
 | 可访问性 | 17+ 图标按钮补 aria-label；toggle 补 role=switch+aria-checked（原 TypewriterText 打字机渲染已移除，结论统一走 MarkdownView，减少动效） | QaTopBar/InputBar/Sidebar/PageTitle/QuickAsk |
 | 可测试性 | 接入 vitest+jsdom；6 个测试文件 22 用例 | `vitest.config.ts`、`src/**/*.test.*` |
-| 可测试性 | 接入 Playwright E2E：mock /api 的 hermetic 静态服 + QA 关键路径用例 | `playwright.config.ts`、`e2e/serve-static.mjs`、`e2e/qa.spec.ts` |
+| 可测试性 | 接入 Playwright E2E：mock /api 的 hermetic 静态服 + QA 关键路径用例（成功/失败/输入守卫 3 条，增至 3 用例） | `playwright.config.ts`、`e2e/serve-static.mjs`、`e2e/qa.spec.ts` |
 | 代码质量 | 接入 ESLint 9 flat config（ts+react-hooks+react-refresh）+ 严格门禁；清 13 处死代码 | `eslint.config.js`、`package.json`、`src/**`（详见遗留） |
 | 安全/CI | 新增 `audit:gate` 生产依赖 high 门禁（`--omit=dev`） | `package.json` |
 | 稳定性 | 回退 manualChunks 整体分包 | `vite.config.ts`（见争议记录） |
@@ -57,7 +57,7 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 | `tsc --noEmit` | 0 错误（exit 0） |
 | `npm run lint` | 0 error / 0 warning（eslint --max-warnings 0） |
 | `vitest run` | 6 文件 / 22 用例全通过 |
-| `npx playwright test` | 1 用例通过（登录→提问→SSE 流式结论+表格+追问） |
+| `npx playwright test` | 3 用例通过（成功流＋SSE 失败流＋输入守卫） |
 | `npm run audit:gate` | exit 0（仅生产依赖，high 级别当前 0） |
 | `vite build` | 成功；ECharts 独立 chunk，主包 280kB |
 | 云端部署 | `jingguan-web`(pm2, <user>) @ 0.0.0.0:8081；`/api`→127.0.0.1:8000 后端可达 |
@@ -90,6 +90,7 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 | P1 | 全仓 105 处内联 `style={{}}` | 偏离 daisyUI/Tailwind 规范 | 逐步收敛到类名；收敛后代码质量可进一步拉满 |
 | P1 | 依赖 3 个 moderate 漏洞 | echarts XSS(需≥6.1)、react-router 重定向/注入(需≥7.18) | 属破坏性大版本升级，列期随重构升级并对齐；`audit:gate`(high 级)当前不阻塞 |
 | P2 | 覆盖率卡口未接 | lint/test/e2e/audit 四卡口已接，缺代码覆盖率门槛 | 接 vitest coverage + 最低覆盖卡口 |
+| P3 | SSE 流 error 事件的具体 message 不展示 | 失败统一走兜底文案"问数请求失败"（getApiErrorMsg 仅读 axios detail） | 失败 path 透出流内 error.message，提升可诊断性 |
 | P2 | vite/esbuild 存在 dev 期 high（非线上产物） | build/本地开发期风险，已用 `--omit=dev` 门禁排除 | 随 Node/vite 大版本升级对齐后，放宽全量 audit |
 | P2 | INP 无干净样本 | 本环境浏览器 agent 缓存污染导致事件计数不可信 | 走部署实例上的 Lighthouse/PageSpeed CI(限速+多次交互) 采集 |
 | P2 | 无断网降级/失败重试 | 弱网体验一般 | 请求层加幂等重试 |

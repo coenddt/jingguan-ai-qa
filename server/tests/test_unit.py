@@ -7,8 +7,10 @@ from app.agent.schema_registry import describe_models
 from app.agent.step_tracker import StepTracker
 from app.auth.service import issue_token, verify_token
 from app.models.registry import register_all
-from app.services.query_cache import qnorm
+from app.config import SIM_JACCARD_W, SIM_LEV_W
+from app.services.query_cache import _bigrams, _levenshtein, _score, qnorm
 from app.services.query_executor import _build_pipeline
+from app.services.query_candidate import pick_checked
 from app.services.query_guard import GuardError, verify
 
 
@@ -120,3 +122,84 @@ def test_step_tracker():
     t = StepTracker()
     t.done(0, 'ok')
     assert t.out()[0]['done'] is True and t.out()[1]['done'] is False
+
+
+# ---------- pipeline 组装分支 ----------
+
+def test_build_pipeline_default_sort_count():
+    # 无 sort + count 聚合 → 默认按首个度量子降序，单分组投影用裸 $_id
+    q = {'condition': {}, 'groupBy': ['unit'], 'measures': [{'op': 'count'}], 'limit': 5}
+    pl = _build_pipeline(q)
+    assert pl[0]['$group']['_id'] == '$unit'
+    assert pl[0]['$group'].get('count_all') == {'$sum': 1}
+    assert {'$sort': {'count_all': -1}} in pl  # 无 sort → 默认按度量子降序
+    assert pl[-1]['$project'] == {'unit': '_id', 'count_all': 1}
+
+
+def test_build_pipeline_no_match_multi_groupby():
+    # 有 condition 才加 $match；多分组投影用 _id.<field>，聚合字段名 sum_income
+    q = {'condition': {'year': 2026}, 'groupBy': ['unit', 'year'],
+         'measures': [{'op': 'sum', 'field': 'income'}], 'sort': {'sum_income': -1}, 'limit': 10}
+    pl = _build_pipeline(q)
+    assert pl[0] == {'$match': {'year': 2026}}
+    assert pl[1]['$group']['_id'] == {'unit': '$unit', 'year': '$year'}
+    assert pl[1]['$group']['sum_income'] == {'$sum': '$income'}
+    assert pl[-1]['$project'] == {'unit': '$_id.unit', 'year': '$_id.year', 'sum_income': 1}
+
+
+# ---------- 问法缓存相似度（纯逻辑） ----------
+
+def test_cache_score_identical():
+    assert _score('政企行业收入', '政企行业收入') == SIM_JACCARD_W + SIM_LEV_W
+
+
+def test_cache_score_empty():
+    assert _score('', 'abc') == 0.0
+    assert _score(None or '', 'abc') == 0.0
+    assert _score('abc', '') == 0.0
+
+
+def test_cache_bigrams_levenshtein():
+    assert _bigrams('ab') == {'ab'}
+    assert _bigrams('a') == {'a'}
+    assert _levenshtein('kitten', 'sitting') == 3
+
+
+# ---------- 候选筛选（纯同步） ----------
+
+def test_pick_checked_combos():
+    ok_q = {'model': 'CommercialLedger', 'mode': 'query',
+            'condition': {'year': {'$eq': 2026}}, 'fields': ['unit', 'income'], 'limit': 50}
+    bad_q = {'model': 'Hack', 'condition': {}}
+    cands = [
+        (ok_q, {'idx': 0, 'ok': True}),
+        (bad_q, {'idx': 1, 'ok': True}),
+        (None, {'idx': 2, 'ok': False, 'error': 'boom'}),
+    ]
+    checked, statuses = pick_checked(cands)
+    assert len(checked) == 1
+    assert [s['status'] for s in statuses] == ['pass', 'guard_error', 'empty']
+
+
+# ---------- token 边界 ----------
+
+def _signed_token(exp: int) -> str:
+    import base64, hashlib, hmac, json
+    from app.config import cfg
+    raw = base64.urlsafe_b64encode(json.dumps({'usr': 'x', 'exp': exp}).encode()).decode()
+    sig = hmac.new(cfg.APP_SECRET_KEY.encode(), raw.encode(), hashlib.sha256).hexdigest()
+    return f'{raw}.{sig}'
+
+
+def test_auth_token_expired():
+    import time
+    assert verify_token(_signed_token(int(time.time()) - 10)) is None
+
+
+def test_auth_token_malformed():
+    import base64
+    assert verify_token(None) is None
+    assert verify_token('no-dot') is None
+    assert verify_token('abc.def') is None  # 签名不符
+    bad = base64.urlsafe_b64encode(b'not-json').decode() + '.x'
+    assert verify_token(bad) is None  # payload 非 JSON

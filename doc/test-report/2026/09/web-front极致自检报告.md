@@ -36,6 +36,7 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 |------|------|----------|
 | 健壮性 | 新增 ErrorBoundary（含 resetKey 路由复位） | `components/ErrorBoundary/index.tsx`、`App.tsx` |
 | 性能 | 路由级 lazy + Suspense；ChartView lazy 分包 ECharts | `App.tsx`、`features/qa/AiCard/index.tsx` |
+| 性能 | 修复 DevLogCard 静态引入 charts 使 ECharts 退出首屏 | `features/qa/DevLogCard.tsx` |
 | 可访问性 | 17+ 图标按钮补 aria-label；toggle 补 role=switch+aria-checked | QaTopBar/InputBar/Sidebar/PageTitle/QuickAsk 等 |
 | 可测试性 | 接入 vitest+jsdom；6 个测试文件 22 用例 | `vitest.config.ts`、`src/**/*.test.*` |
 
@@ -45,7 +46,25 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 |----|------|
 | `tsc --noEmit` | 0 错误（exit 0） |
 | `vitest run` | 6 文件 / 22 用例全通过 |
-| `vite build` | 成功；ECharts 独立 1.7MB chunk，主包 280kB |
+| `vite build` | 成功；ECharts 独立 chunk，主包 280kB |
+| 浏览器实测（本机瞬起 preview，主站登录页） | 见「浏览器实测证据」 |
+
+## 浏览器实测证据（2026-09-05）
+
+**范围说明**：真实浏览器对瞬起 preview 的静态产物实测登录页；QA 主页面 CWV/LCP/INP 需后端鉴权（仅云端可跑），不在本组实测。
+
+| 指标 | 实测值 | 说明 |
+|------|--------|------|
+| TTFB | 23ms | 静态资源 |
+| DOMContentLoaded | 196ms | |
+| load | 200ms | |
+| CLS | 0 | 滚动后无布局偏移 |
+| 首屏初始字节 | 788KB → **445KB** | 修复后 |
+| ECharts chunk | 退出首屏 | 由 788KB 维护到 445KB 的关键收益 |
+
+> 生产构建发现 DevLogCard **静态**引入 charts 把 ECharts(1,053kB/537KB-gzip) 拉回主包，已改为 `React.lazy`，实测确认其退出首屏请求。
+
+**可访问性 DOM 审计（登录页）**：按钮 1/1 具名；图片 0；输入框 2/2 有标注 → 无违规项。
 
 ## 遗留问题（未阻塞发布）
 

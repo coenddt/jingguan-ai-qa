@@ -1,15 +1,17 @@
 /** 开发者日志卡片：完整复现 AI 回答全链路（分析过程/查询调试/数据/图表/结论/追问/原始日志）
  *  仅用于日志详情弹窗，供开发人员排查；历史老数据缺新字段时防御性降级 */
 
-import { useCallback, useState } from 'react'
+import { lazy, Suspense, useCallback, useState } from 'react'
 import type { QaAskResp } from '../../types'
 import MarkdownView from '../../components/MarkdownView'
-import ChartView from './charts'
 import AiSteps from './AiCard/AiSteps'
 import AiDataTable from './AiCard/AiDataTable'
 import AiStatsGrid from './AiCard/AiStatsGrid'
 import { Module, BlkEmpty } from './AiCard/qaBlocks'
 import { copyToClipboard } from '../../services/clipboard'
+
+// ECharts 按需分包：仅当日志含图表才加载图表 chunk，避免其进主包/首屏
+const ChartView = lazy(() => import('./charts'))
 
 interface Props {
   /** 消息 aiMeta（历史数据可能缺少新字段，需防御性渲染） */
@@ -104,7 +106,9 @@ export default function DevLogCard({ resp }: Props) {
         <Module num={5} title="数据可视化">
           <div className="qa-ai-chart">
             <div className="chart-desc">{resp.chart.title}{resp.chart.unit ? `（单位：${resp.chart.unit}）` : ''}：</div>
-            <ChartView chart={resp.chart} />
+            <Suspense fallback={<div className="text-sm text-slate-400 py-2">图表加载中…</div>}>
+              <ChartView chart={resp.chart} />
+            </Suspense>
           </div>
         </Module>
       )}

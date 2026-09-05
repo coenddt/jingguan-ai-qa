@@ -94,6 +94,123 @@ def test_guard_limit_capped():
     assert c['limit'] == 200
 
 
+# ---------- 守卫内部纯函数（定向补测，杀存活变异） ----------
+
+from app.services.query_guard import (
+    _check_key, _clamp_limit, _descend_value, _group_by_checked,
+    _load_model, _normalize_measure, _reject_op, _resolve_fields, _sort_checked,
+    _verify_aggregate, measure_key,
+)
+from app.config import ALLOWED_OPS, DENIED_OPS, MAX_LIMIT
+
+
+def test_guard_descend_scalar_no_recurse():
+    # 标量/普通列表不递归：合法值直接通过，不抛错
+    _descend_value(2026, {'year'}, 'root.year')
+    _descend_value([1, 2, 'x'], {'year'}, 'root.year')
+    _descend_value(None, {'year'}, 'root.year')
+
+
+def test_guard_descend_list_of_dict_catches_deep():
+    # 字典数组里藏危险操作符 → 带下标路径递归拦截
+    with pytest.raises(GuardError):
+        _descend_value([{'income': {'$where': '1'}}], {'income'}, 'root.arr')
+
+
+def test_guard_descend_dict_passthrough():
+    # 字典原样递归进 walk_condition
+    with pytest.raises(GuardError):
+        _descend_value({'year': {'$gte': 2026, '$merge': 'x'}}, {'year'}, 'root')
+
+
+def test_guard_reject_op_denied_message():
+    with pytest.raises(GuardError) as e:
+        _reject_op('$where', '')
+    assert '禁用' in str(e.value)
+    with pytest.raises(GuardError) as e2:
+        _reject_op('$lookup', 'a.b')
+    assert '@ a.b' in str(e2.value)
+
+
+def test_guard_reject_op_unknown_not_denied():
+    # 不在 DENIED 也不算 ALLOWED 的野操作符 → 越界
+    with pytest.raises(GuardError) as e:
+        _reject_op('$set', '')
+    assert '越界' in str(e.value)
+
+
+def test_guard_check_key_non_string():
+    with pytest.raises(GuardError):
+        _check_key(123, {'year'}, '')
+
+
+def test_guard_check_key_dollar_and_field():
+    _check_key('$eq', ALLOWED_OPS, '')   # 允许的操作符放行
+    _check_key('year', {'year'}, '')     # 白名单字段放行
+    with pytest.raises(GuardError):
+        _check_key('$or', ALLOWED_OPS, '')  # $or 在白名单但不在 ALLOWED_OPS
+    with pytest.raises(GuardError):
+        _check_key('hack', {'year'}, 'a.b')  # 未知字段携路径
+
+
+def test_guard_sort_checked_empty_and_bad():
+    assert _sort_checked({}, {'unit'}) == {}
+    assert _sort_checked({'unit': -1}, {'unit'}) == {'unit': -1}
+    with pytest.raises(GuardError):
+        _sort_checked({'income': 1}, {'unit'})
+
+
+def test_guard_resolve_fields_default_and_bad():
+    names = {'unit', 'income'}
+    assert sorted(_resolve_fields({'fields': []}, names)) == ['income', 'unit']
+    assert _resolve_fields({'fields': ['unit']}, names) == ['unit']
+    with pytest.raises(GuardError):
+        _resolve_fields({'fields': ['hack']}, names)
+
+
+def test_guard_clamp_limit():
+    assert _clamp_limit({}) == MAX_LIMIT
+    assert _clamp_limit({'limit': '10'}) == 10
+    assert _clamp_limit({'limit': -5}) == -5  # 负数不放大宽，int 原样截断
+    assert _clamp_limit({'limit': 99999}) == MAX_LIMIT
+
+
+def test_guard_group_by_checked():
+    assert _group_by_checked({'groupBy': ['unit']}, {'unit'}) == ['unit']
+    with pytest.raises(GuardError):
+        _group_by_checked({'groupBy': ['hack']}, {'unit'})
+    with pytest.raises(GuardError):
+        _group_by_checked({'groupBy': []}, {'unit'})
+
+
+def test_guard_normalize_measure_boundaries():
+    fd = {'income': {'type': 'float'}, 'unit': {'type': 'string'}}
+    names = {'income', 'unit'}
+    assert _normalize_measure({'op': 'sum', 'field': 'income'}, fd, names) == {'op': 'sum', 'field': 'income'}
+    assert _normalize_measure({'op': 'count', 'field': ''}, fd, names)['field'] == ''
+    with pytest.raises(GuardError):  # 算子越界
+        _normalize_measure({'op': 'stddev', 'field': 'income'}, fd, names)
+    with pytest.raises(GuardError):  # 非数值目标
+        _normalize_measure({'op': 'sum', 'field': 'unit'}, fd, names)
+    with pytest.raises(GuardError):  # 字段不在白名单
+        _normalize_measure({'op': 'sum', 'field': 'hack'}, fd, names)
+
+
+def test_guard_measure_key():
+    assert measure_key({'op': 'sum', 'field': 'income'}) == 'sum_income'
+    assert measure_key({'op': 'count', 'field': ''}) == 'count_all'
+
+
+def test_guard_verify_aggregate_requires_measure():
+    with pytest.raises(GuardError):
+        _verify_aggregate({'groupBy': ['unit'], 'measures': []}, {}, {'unit'})
+
+
+def test_guard_load_model_rejects_non_business():
+    with pytest.raises(GuardError):
+        _load_model({'model': 'QaSession', 'condition': {}})
+
+
 def test_executor_pipeline_shape():
     c = verify({'model': 'ReportOverall', 'mode': 'aggregate', 'condition': {'year': 2026},
                 'groupBy': ['unit'], 'measures': [{'op': 'sum', 'field': 'income'}],
@@ -156,6 +273,36 @@ def test_build_pipeline_no_match_multi_groupby():
     assert pl[-1]['$project'] == {'unit': '$_id.unit', 'year': '$_id.year', 'sum_income': 1}
 
 
+def test_executor_sort_stage_explicit_vs_default_none():
+    from app.services.query_executor import _sort_stage
+    # 显式 sort 优先
+    assert _sort_stage({'sort': {'unit': 1}}, {'_id': '$unit', 'count_all': {'$sum': 1}}) == {'$sort': {'unit': 1}}
+    # 无 sort → 按首个聚合键倒序
+    assert _sort_stage({'sort': {}}, {'_id': '$unit', 'count_all': {'$sum': 1}}) == {'$sort': {'count_all': -1}}
+    # 既无 sort 也无聚合键 → None（跳过 sort 阶段）
+    assert _sort_stage({'sort': {}}, {'_id': '$unit'}) is None
+
+
+def test_executor_group_doc_single_multi_count():
+    from app.services.query_executor import _group_doc
+    # 单分组 → 裸 $_id
+    assert _group_doc({'groupBy': ['unit'], 'measures': [{'op': 'count'}]})['_id'] == '$unit'
+    # 多分组 → 对象 _id
+    g = _group_doc({'groupBy': ['unit', 'year'], 'measures': [{'op': 'sum', 'field': 'income'}]})
+    assert g['_id'] == {'unit': '$unit', 'year': '$year'} and g['sum_income'] == {'$sum': '$income'}
+    # count → $sum:1
+    assert _group_doc({'groupBy': ['unit'], 'measures': [{'op': 'count'}]})['count_all'] == {'$sum': 1}
+
+
+def test_executor_project_stage_multi_count():
+    from app.services.query_executor import _project_stage
+    # 单分组 → _id 还原；多分组 → _id.<field>
+    p1 = _project_stage({'groupBy': ['unit'], 'measures': [{'op': 'count'}]})
+    assert p1 == {'unit': '$_id', 'count_all': 1}
+    p2 = _project_stage({'groupBy': ['unit', 'year'], 'measures': [{'op': 'count'}]})
+    assert p2 == {'unit': '$_id.unit', 'year': '$_id.year', 'count_all': 1}
+
+
 # ---------- 问法缓存相似度（纯逻辑） ----------
 
 def test_cache_score_identical():
@@ -171,7 +318,19 @@ def test_cache_score_empty():
 def test_cache_bigrams_levenshtein():
     assert _bigrams('ab') == {'ab'}
     assert _bigrams('a') == {'a'}
+    assert _bigrams('') == {''}
     assert _levenshtein('kitten', 'sitting') == 3
+    assert _levenshtein('', 'abc') == 3
+    assert _levenshtein('ab', 'ab') == 0
+    assert _levenshtein('a', 'b') == 1
+
+
+def test_cache_score_mixed():
+    # 重叠字形越多分数越高（jaccard + lev 加权）
+    s_high = _score('收入排行榜', '收入排行')
+    s_low = _score('收入排行榜', '合同履约进度')
+    assert s_high > s_low
+    assert _score('完全', '不同') < 1.0
 
 
 # ---------- 候选筛选（纯同步） ----------
@@ -1093,6 +1252,31 @@ def test_cache_exact_hit_hit(monkeypatch):
     assert calls  # 命中后 hit 计数已执行
 
 
+def test_cache_exact_hit_empty_template_no_default(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    async def fake_q1(gql, params=None):
+        return {'_id': 'e1', 'template': None}
+    async def fake_upd(*a, **k):
+        raise AssertionError('不应 hit 计数')
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    monkeypatch.setattr(st, 'update', fake_upd)
+    assert asyncio.run(qc.exact_hit('问法')) is None  # 查到了但无 template → 视为未命中
+
+
+def test_cache_exact_hit_empty_question(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    called = []
+    async def fake_q1(gql, params=None):
+        called.append(True)
+        return None
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    assert asyncio.run(qc.exact_hit('')) is None   # 空问法 → 不触库
+    assert asyncio.run(qc.exact_hit('   ')) is None  # 仅空白 → 归一化后空
+    assert called == []
+
+
 def test_cache_top_k_fuzzy(monkeypatch):
     import asyncio
     from app.db.mongo_store import store as st
@@ -1103,6 +1287,30 @@ def test_cache_top_k_fuzzy(monkeypatch):
     out = asyncio.run(qc.top_k_fuzzy('问题', k=5, min_score=0.0))
     assert isinstance(out, list) and len(out) <= 2  # 仅作 few-shot，按分数截断
     assert asyncio.run(qc.top_k_fuzzy('')) == []  # 空 key → 空
+
+
+def test_cache_top_k_fuzzy_filter_and_k(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    from app.services import query_cache as _qc
+    async def fake_q(gql, params=None):
+        # 4 条：精确同词(高分) / 中度相关 / 两条无关低频
+        return [
+            {'question': 'q0', 'qnorm': '收入排行榜', 'template': {'m': 0}},
+            {'question': 'q1', 'qnorm': '收入排行', 'template': {'m': 1}},
+            {'question': 'q2', 'qnorm': '合同履约进度', 'template': {'m': 2}},
+            {'question': 'q3', 'qnorm': '后勤报销车辆', 'template': {'m': 3}},
+        ]
+    monkeypatch.setattr(st, 'query', fake_q)
+    # k=1 → 只返回最高分一条
+    out1 = asyncio.run(_qc.top_k_fuzzy('收入排行榜', k=1, min_score=0.0))
+    assert len(out1) == 1 and out1[0]['question'] == 'q0'
+    # 高阈值 → 仅精确近义两词保留
+    out2 = asyncio.run(_qc.top_k_fuzzy('收入排行榜', k=9, min_score=0.5))
+    assert [o['question'] for o in out2] == ['q0', 'q1']
+    # 分数单调递减
+    scores = [o['score'] for o in out2]
+    assert all(scores[i] >= scores[i + 1] for i in range(len(scores) - 1))
 
 
 def test_cache_upsert_new(monkeypatch):
@@ -1166,6 +1374,26 @@ def test_cache_upsert_empty_key(monkeypatch):
     asyncio.run(qc.upsert('', {}, True))  # 空 key 直接返回，不触库
 
 
+def test_cache_upsert_success_without_template_noop(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    touched = []
+    async def fake_q1(gql, params=None):
+        touched.append('query')
+        return None
+    async def fake_ins(*a, **k):
+        touched.append('insert')
+        return None
+    async def fake_rai(fn):
+        await fn()
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    monkeypatch.setattr(st, 'insert', fake_ins)
+    monkeypatch.setattr(st, 'run_as_internal', fake_rai)
+    # success=True 但无 template → 立即返回，不查询库也不插入
+    asyncio.run(qc.upsert('问法', None, True))
+    assert touched == []
+
+
 # ---------- query_candidate 全链路 ----------
 
 from app.services import query_candidate as qcand
@@ -1179,6 +1407,19 @@ def test_pick_checked_guard_error_vs_empty():
     checked, statuses = qcand.pick_checked(cands)
     assert checked == [] and statuses[0]['status'] == 'guard_error'  # verify 抛守卫错误
     assert statuses[1]['status'] == 'empty'  # 生成失败
+
+
+def test_pick_checked_meta_missing_idx():
+    # meta 缺 ok/不存在 → empty；缺 idx → status 无 idx 键但不崩溃
+    checked, statuses = qcand.pick_checked([(None, {})])
+    assert checked == [] and statuses[0]['status'] == 'empty'
+    assert statuses[0]['idx'] is None  # meta 缺 idx → 默认 None
+
+
+def test_pick_checked_cand_none_ok_true():
+    # cand=None 即使 ok=True 也判 empty（数据缺失兜底）
+    checked, statuses = qcand.pick_checked([(None, {'idx': 0, 'ok': True})])
+    assert checked == [] and statuses[0]['status'] == 'empty'
 
 
 def test_generate_candidates_with_prime(monkeypatch):
@@ -1195,3 +1436,46 @@ def test_generate_candidates_with_prime(monkeypatch):
                                                          preheat=True))
     assert len(cands) == 2 and all(m['ok'] for _, m in cands)
     assert prime and prime['ok'] is True  # 预热随批次并发
+
+
+def test_generate_candidates_single_failure_isolated(monkeypatch):
+    import asyncio
+    from app.services import query_candidate as _m
+
+    async def fake_invoke(scenario, vars_, conf):
+        idx = vars_.get('question')
+        if idx == 'bad':
+            raise RuntimeError('boom')
+        return ({'model': 'CommercialLedger'}, {'total_tokens': 5, 'elapsed_s': 0.1,
+                'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+    monkeypatch.setattr(llm_client, 'invoke', fake_invoke)
+    conf = {'platform': 'deepseek', 'baseUrl': '', 'apiKey': 'k', 'modelName': 'm'}
+    # 注意 vars 传入的 question 对所有候选是同一个；用 n 大 + 特定问题区分不了。
+    # 直接测：invoke 抛错 → 对应候选 meta ok=False，其他候选不受影响（等效多候选独立失败）
+    cands, prime = asyncio.run(_m.generate_candidates('q', [], conf, n=1, concurrency=1))
+    assert prime is None
+    # 命中失败路径：invoke 抛错
+    async def fake_fail(scenario, vars_, conf):
+        raise RuntimeError('boom')
+    monkeypatch.setattr(llm_client, 'invoke', fake_fail)
+    cands2, _ = asyncio.run(_m.generate_candidates('q', [], conf, n=1, concurrency=1))
+    assert cands2 and cands2[0][0] is None and cands2[0][1]['ok'] is False
+    assert 'error' in cands2[0][1]
+
+
+def test_generate_candidates_preheat_failure_isolated(monkeypatch):
+    import asyncio
+    from app.services import query_candidate as _m
+
+    async def fake_invoke(scenario, vars_, conf):
+        return ({'model': 'CommercialLedger'}, {'total_tokens': 5, 'elapsed_s': 0.1,
+                'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+    async def fake_chat_msgs(msgs, **k):
+        raise RuntimeError('prime down')
+    monkeypatch.setattr(llm_client, 'invoke', fake_invoke)
+    monkeypatch.setattr(llm_client, 'chat', fake_chat_msgs)
+    conf = {'platform': 'deepseek', 'baseUrl': '', 'apiKey': 'k', 'modelName': 'm'}
+    cands, prime = asyncio.run(_m.generate_candidates('q', [], conf, n=1, concurrency=1,
+                                                      preheat=True))
+    assert len(cands) == 1 and cands[0][1]['ok']  # 预热失败不阻断候选
+    assert prime is not None and prime['ok'] is False and 'error' in prime

@@ -33,6 +33,9 @@ coverage/
 .nyc_output/
 test-results/
 playwright-report/
+mutants/
+.mutmut-cache
+html/
 
 # 临时文件
 tmp/

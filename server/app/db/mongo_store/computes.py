@@ -12,6 +12,7 @@ crud.query 负责 GQL 解析与取数，取数后调本模块完成加工。
 """
 
 import inspect
+from typing import Any
 
 from .permission import (
     evaluate,
@@ -170,7 +171,7 @@ def _merge_depends_into_ast(ast, schema):
     # ── 合并到 AST ──
     if 'relations' not in ast:
         ast['relations'] = {}
-    inject_info = {'relations': {}}
+    inject_info: dict[str, dict[str, Any]] = {'relations': {}}
 
     for rel_name, dep_fields in rel_deps.items():
         existing = ast['relations'].get(rel_name)

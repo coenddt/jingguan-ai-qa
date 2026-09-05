@@ -73,7 +73,8 @@ def _fail(path: str, reason: str) -> None:
 
 def _check(value: Any, spec: dict, path: str) -> None:
     """按 spec 递归校验单节点结构；任何不符抛 ShellError（结构层，非语义）"""
-    want = _TYPE_MAP.get(spec.get('type'))
+    spec_type = spec.get('type')
+    want = _TYPE_MAP.get(spec_type if isinstance(spec_type, str) else '')
     enum = spec.get('enum')
 
     if want is not None:

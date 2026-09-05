@@ -12,6 +12,8 @@ GQL 语法（极简，支持5个参数）:
 值用 @key 引用 params 对象
 """
 
+from typing import Any
+
 from .permission import get_context, get_readable_computes
 from .schema import get
 
@@ -175,7 +177,7 @@ def build_lookup(rel_name, rel_ast, params, rel_def, rel_schema, source_schema, 
         # 返回空 $lookup（只做外键匹配，不继续嵌套），pipeline 不崩溃
         return build_empty_lookup(rel_name, rel_def, rel_schema, source_schema)
 
-    stages = []
+    stages: list[dict[str, Any]] = []
 
     # $match: 外键关联 + 附加条件
     # 当 localField 是 array 类型时，使用 $in 匹配数组中的任一元素
@@ -278,7 +280,7 @@ def build_empty_lookup(rel_name, rel_def, rel_schema, source_schema):
 
 def build_compute_lookup_stages(schema):
     """构建 compute 的独立 $lookup 阶段"""
-    stages = []
+    stages: list[dict[str, Any]] = []
     for key, comp in (schema.get('computes') or {}).items():
         lookup = comp.get('lookup')
         if lookup and lookup.get('from'):
@@ -331,7 +333,7 @@ def flatten_object_fields(ast, schema):
 def build_pipeline(ast, params):
     """从 AST 构建 aggregate pipeline"""
     schema = get(ast['model'])
-    stages = []
+    stages: list[dict[str, Any]] = []
 
     root_condition = _param(params, ast['params'].get('condition'))
     root_sort = _param(params, ast['params'].get('sort'))

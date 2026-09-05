@@ -3,6 +3,7 @@
 import json
 import re
 import time
+from typing import cast
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -117,10 +118,10 @@ async def ask(body: AskIn):
 
 @router.get('/quick-asks')
 async def quick_asks():
-    hot_default = APP_CONFIG_DEFAULTS['hotRecommend']
+    hot_default = cast(dict, APP_CONFIG_DEFAULTS['hotRecommend'])
     hot_cfg = await store.query_one('AppConfig($condition:@c0) { value }',
                                     {'c0': {'key': 'hotRecommend'}})
-    conf = (hot_cfg or {}).get('value') or {}
+    conf = cast(dict, (hot_cfg or {}).get('value') or {})
     enabled = bool(conf.get('enabled', hot_default['enabled']))
     threshold = int(conf.get('threshold', hot_default['threshold']))
     hot = []

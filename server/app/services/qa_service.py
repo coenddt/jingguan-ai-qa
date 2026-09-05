@@ -98,13 +98,16 @@ def _build_chart(question: str, q: dict, rows: list[dict]) -> dict | None:
         x = [str(r.get(dim, ''))[:8] if dim else str(i + 1) for i, r in enumerate(rows)]
         series = [round(float(r.get(mk) or 0), 2) for r in rows]
         title = f'{mk}分布'
-    if any(w in question for w in QA_CHART['pie_keywords']) and len(rows) <= QA_CHART['pie_max_rows']:
+    pie_keywords: tuple[str, ...] = cast(tuple[str, ...], QA_CHART['pie_keywords'])
+    pie_max_rows = cast(int, QA_CHART['pie_max_rows'])
+    amount_markers: tuple[str, ...] = cast(tuple[str, ...], QA_CHART['amount_markers'])
+    if any(w in question for w in pie_keywords) and len(rows) <= pie_max_rows:
         ctype = 'pie'
     elif dim in QA_TIME_DIMS:
         ctype = 'line'
     else:
         ctype = 'bar'
-    unit = QA_CHART['amount_unit'] if any(m in mk for m in QA_CHART['amount_markers']) else ''
+    unit = QA_CHART['amount_unit'] if any(m in mk for m in amount_markers) else ''
     return {'type': ctype, 'title': title, 'unit': unit, 'series': series, 'x': x,
             'legend': [mk] if ctype != 'pie' else x}
 

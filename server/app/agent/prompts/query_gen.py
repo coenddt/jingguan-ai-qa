@@ -14,8 +14,8 @@ from app.agent.schema_registry import describe_models
 # reasoning=disabled 语义：不需要模型思考。实测 4 类问法守卫通过率 4/4、语义 3/4 完全一致 1/4 等价，
 # 耗时从 2.5~21.9s 降至 0.54~0.68s；守卫链路（白名单+择优+重试）不变，越界仍被拦并自动反馈。
 # 具体请求体由 llm_client 平台层翻译（场景层不耦合平台姿势）。
-PARAMS = {'temperature': 0.1, 'json': True, 'retries': 3, 'few_shot_max': 3,
-          'reasoning': 'disabled'}
+PARAMS: dict[str, int | float | str | bool] = {'temperature': 0.1, 'json': True, 'retries': 3, 'few_shot_max': 3,
+                                               'reasoning': 'disabled'}
 
 SYSTEM_TMPL = """你是数据查询生成器。根据用户问题，从给定模型清单中选择合适的模型，产出一个结构化查询 JSON（对 mongo-store 模型的查询，非 SQL）。
 

@@ -36,7 +36,7 @@ from .pipeline import build_pipeline, build_projection, parse_gql
 from .schema import get as _get_schema
 from .schema import has as _has_schema
 
-_db = None
+_db: Any = None
 
 
 def set_db(db):
@@ -95,7 +95,7 @@ async def query(gql: str, params: dict | None = None) -> list[dict[str, Any]]:
 
     # 注入 asyncFn 计算列的关系依赖
     if has_pipeline:
-        inject_info = {'relations': {}}
+        inject_info: dict[str, dict[str, Any]] = {'relations': {}}
     else:
         inject_info = _merge_depends_into_ast(ast, schema)
     has_inject = len(inject_info['relations']) > 0
@@ -127,7 +127,9 @@ async def query(gql: str, params: dict | None = None) -> list[dict[str, Any]]:
     if first_lookup_idx >= 0 and has_skip_limit:
         # 检查 sort 是否引用关联表字段（如 'bidders.amount'）
         sort_stage = next((st for st in pipeline if '$sort' in st), None)
-        sorts_by_relation = bool(sort_stage) and any('.' in k for k in sort_stage['$sort'])
+        sorts_by_relation = False
+        if isinstance(sort_stage, dict):
+            sorts_by_relation = any('.' in k for k in (sort_stage.get('$sort') or {}))
 
         if not sorts_by_relation:
             # 阶段一：仅取分页后的 ID（无 $lookup，利用索引）
@@ -401,9 +403,7 @@ async def update(schema_name: str, condition: dict, data: dict, options: dict | 
     set_data.pop('_id', None)
 
     if not set_data:
-        err = ValueError('没有提供要更新的字段')
-        err.code = 'NO_FIELDS_TO_UPDATE'
-        raise err
+        raise ValueError('没有提供要更新的字段')
 
     if s['timestamps']:
         set_data['updatedAt'] = int(time.time() * 1000)

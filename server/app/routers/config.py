@@ -14,10 +14,12 @@ async def _load_all() -> dict:
     for r in rows:
         key = str(r['key'])
         val = r.get('value')
-        if key in data and isinstance(val, dict) and isinstance(data[key], dict):
-            data[key].update(val)
-        elif key in data:
-            data[key] = val
+        if key in data:
+            cur = data[key]
+            if isinstance(val, dict) and isinstance(cur, dict):
+                cur.update(val)
+            else:
+                data[key] = val
     return data
 
 

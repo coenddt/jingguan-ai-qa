@@ -107,9 +107,8 @@ test.describe('QA 关键路径', () => {
     await input.fill('2026年各产品线利润率如何？')
     await page.click('button[aria-label="发送"]')
 
-    // 失败：AI 占位卡被移除、错误以 snackbar 呈现（getApiErrorMsg 只取 axios detail，
-    // SSE 流 error 事件 message 走兜底文案），用户消息保留
-    await expect(page.getByText('问数请求失败，请稍后重试')).toBeVisible({ timeout: 20_000 })
+    // 失败：AI 占位卡被移除、用户消息保留；错因经 SSE error 事件 message 透出到 snackbar（可诊断）
+    await expect(page.getByText('模型调用失败：请求超时')).toBeVisible({ timeout: 20_000 })
     await expect(page.getByText('2026年各产品线利润率如何？').first()).toBeVisible()
     await expect(page.locator('.qa-ai-card')).toHaveCount(0)
   })

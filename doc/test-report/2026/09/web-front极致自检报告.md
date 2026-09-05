@@ -1,35 +1,35 @@
 ---
 name: "web-front-extreme-self-check-report"
-description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造项 + 云端真实浏览器实测 + E2E/ESLint/audit 门禁。B 级达成，总分 4.45。"
+description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造项 + 云端真实浏览器实测。A 级达成，总分 4.65。"
 ---
 
 # Web 前端极致自检报告 · 2026-09-05
 
 ## 结论
 
-**总分 4.45 / 5.0　级别 B（合格，可发布，逼近 A 档）**
+**总分 4.65 / 5.0　级别 A（优秀，可发布）**
 
 ```
-5×0.25(功能) + 4×0.15(性能) + 4×0.15(安全) + 4×0.10(健壮)
-+ 5×0.10(代码) + 5×0.10(测试) + 4×0.10(体验) + 4×0.05(a11y)
-= 1.25 + 0.60 + 0.60 + 0.40 + 0.50 + 0.50 + 0.40 + 0.20 = 4.45
+5×0.25(功能) + 4×0.15(性能) + 4×0.15(安全) + 5×0.10(健壮)
++ 5×0.10(代码) + 5×0.10(测试) + 5×0.10(体验) + 4×0.05(a11y)
+= 1.25 + 0.60 + 0.60 + 0.50 + 0.50 + 0.50 + 0.50 + 0.20 = 4.65
 ```
 
 **否决项核对**：安全 4（>1）、无错误数据、无主流程崩溃 → 无否决。
 
-> 历史订正：加权和依次为 3.80 → 3.95 → 4.00 → 4.10（测试 4→5，Playwright E2E）→ 4.20（代码 4→5，ESLint 门禁）→ **4.45（功能 4→5，E2E 覆盖成功+失败+输入守卫三态）**。
+> 历史订正：加权和依次为 3.80 → 3.95 → 4.00 → 4.10（测试 4→5，Playwright E2E）→ 4.20（代码 4→5，ESLint 门禁）→ 4.45（功能 4→5，E2E 三态）→ 4.55（健壮 4→5，断网 GET 退避重试）→ **4.65（体验 4→5，SSE 错因透出）**。
 
 ## 分维评分表
 
 | 维度 | 分值 | 证据 | 备注 |
 |------|------|------|------|
-| 功能正确性 | 5 | 静态走查 + 真实浏览器 + E2E 三态 | 登录→/qa 全流程走通；E2E 覆盖成功流(结论/表格/追问)+失败流(SSE error→占位卡移除+兜底提示)+输入守卫(空白禁发)，SSE 三态齐全 |
+| 功能正确性 | 5 | 静态走查 + 真实浏览器 + E2E 三态 | 登录→/qa 全流程走通；E2E 覆盖成功流(结论/表格/追问)+失败流(SSE error→占位卡移除+错因透出)+输入守卫(空白禁发)，SSE 三态齐全 |
 | 性能 | 4 | 云端真实浏览器实测 | LCP/FCP≈1032ms、load≈53ms、CLS=0；INP 受浏览器缓存污染未取到干净样本 |
 | 安全 | 4 | 全仓扫描 + npm audit | 0 dangerHTML/eval；DOMPurify 全去标签；`audit:gate`（生产依赖 high 门禁）当前通过(见遗留) |
-| 健壮性 | 4 | 代码走查 | ErrorBoundary+路由复位；AbortController；无断网降级 |
+| 健壮性 | 5 | 代码走查 + 单测 | ErrorBoundary+路由复位；AbortController；断网 GET 退避重试(≤2,仅幂等安全方法)；5 条重试策略单测 |
 | 代码质量 | 5 | tsc + ESLint 双门禁 | 0 error/0 any；`lint`(eslint --max-warnings 0)全绿；清 13 处死代码/未用 import；内联样式收敛列为 P1 |
-| 可测试性 | 5 | vitest + Playwright E2E + CI 门禁 | 单测 22/22；E2E 覆盖登录→提问→SSE 流式渲染；`test/e2e/lint/audit:gate` 四卡口齐备 |
-| 交互体验 | 4 | 代码走查 | 骨架屏、spinner、防重、二次确认齐全 |
+| 可测试性 | 5 | vitest + Playwright E2E + CI 门禁 | 单测 30（含 getErrorMessage 3/重试策略 5）；E2E 3 用例(成功/失败/守卫)；`lint/test/e2e/audit:gate` 四卡口，e2e 先构建保证可复现 |
+| 交互体验 | 5 | 代码走查 + E2E 断言 | 骨架屏、spinner、防重、二次确认齐全；失败态 SSE 流内 error.message 透出到 snackbar（可诊断，E2E 精确断言错因文案） |
 | 可访问性 | 4 | 云端 axe 实测（修复后归零） | 空态/图标文字 #6B8CAE→#2F6D9F 达 AA；/qa axe violations=0、color-contrast=0 |
 
 ## 本轮改造项
@@ -44,6 +44,8 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 | 可测试性 | 接入 Playwright E2E：mock /api 的 hermetic 静态服 + QA 关键路径用例（成功/失败/输入守卫 3 条，增至 3 用例） | `playwright.config.ts`、`e2e/serve-static.mjs`、`e2e/qa.spec.ts` |
 | 代码质量 | 接入 ESLint 9 flat config（ts+react-hooks+react-refresh）+ 严格门禁；清 13 处死代码 | `eslint.config.js`、`package.json`、`src/**`（详见遗留） |
 | 安全/CI | 新增 `audit:gate` 生产依赖 high 门禁（`--omit=dev`） | `package.json` |
+| 健壮性 | 断网降级重试：网络层失败的幂等 GET 退避重试(≤2)；401 不重试、写操作不重试 | `api/client.ts`、`api/client.test.ts` |
+| 交互体验 | 失败态错因透出：新增 `getErrorMessage`（优先后端 detail，其次 Error.message），SSE 流内 error.message 直出 snackbar，摆脱笼统兜底文案；失败流 E2E 改为精确断言错因"模型调用失败：请求超时" | `utils/error.ts`、`hooks/useQaChat.ts`、`utils/error.test.ts`、`e2e/qa.spec.ts` |
 | 稳定性 | 回退 manualChunks 整体分包 | `vite.config.ts`（见争议记录） |
 
 ### 争议记录：manualChunks 回退
@@ -56,10 +58,10 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 |----|------|
 | `tsc --noEmit` | 0 错误（exit 0） |
 | `npm run lint` | 0 error / 0 warning（eslint --max-warnings 0） |
-| `vitest run` | 6 文件 / 22 用例全通过 |
-| `npx playwright test` | 3 用例通过（成功流＋SSE 失败流＋输入守卫） |
+| `vitest run` | 7 文件 / 30 用例全通过（含 getErrorMessage 3/重试策略 5） |
+| `npx playwright test` | 3 用例通过（成功流／SSE 失败流·精确断言错因／输入守卫） |
 | `npm run audit:gate` | exit 0（仅生产依赖，high 级别当前 0） |
-| `vite build` | 成功；ECharts 独立 chunk，主包 280kB |
+| `vite build` | 成功；ECharts 独立 chunk，主包 281kB |
 | 云端部署 | `jingguan-web`(pm2, <user>) @ 0.0.0.0:8081；`/api`→127.0.0.1:8000 后端可达 |
 
 ## 云端真实浏览器实测（2026-09-05）
@@ -90,10 +92,9 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 | P1 | 全仓 105 处内联 `style={{}}` | 偏离 daisyUI/Tailwind 规范 | 逐步收敛到类名；收敛后代码质量可进一步拉满 |
 | P1 | 依赖 3 个 moderate 漏洞 | echarts XSS(需≥6.1)、react-router 重定向/注入(需≥7.18) | 属破坏性大版本升级，列期随重构升级并对齐；`audit:gate`(high 级)当前不阻塞 |
 | P2 | 覆盖率卡口未接 | lint/test/e2e/audit 四卡口已接，缺代码覆盖率门槛 | 接 vitest coverage + 最低覆盖卡口 |
-| P3 | SSE 流 error 事件的具体 message 不展示 | 失败统一走兜底文案"问数请求失败"（getApiErrorMsg 仅读 axios detail） | 失败 path 透出流内 error.message，提升可诊断性 |
+| P3 | SSE 流 error 事件的具体 message 不展示 | 失败统一走兜底文案"问数请求失败"（getApiErrorMsg 仅读 axios detail） | **已解决**：`getErrorMessage` 兜底 Error.message，SSE error.message 直出 snackbar；失败流 E2E 精确断言错因 |
 | P2 | vite/esbuild 存在 dev 期 high（非线上产物） | build/本地开发期风险，已用 `--omit=dev` 门禁排除 | 随 Node/vite 大版本升级对齐后，放宽全量 audit |
 | P2 | INP 无干净样本 | 本环境浏览器 agent 缓存污染导致事件计数不可信 | 走部署实例上的 Lighthouse/PageSpeed CI(限速+多次交互) 采集 |
-| P2 | 无断网降级/失败重试 | 弱网体验一般 | 请求层加幂等重试 |
 | P2 | 生产构建时有旧 vendor chunk 缓存残留 | 极少数环境可能闪 init 错 | 强缓存/清 CDN |
 
 ## 禁止事项
@@ -106,7 +107,7 @@ description: "web-front 极致自检报告：8 维度加权定级 + 本轮改造
 
 ## 注意事项
 
-1. 性能/可访问指标以真实浏览器实测为准；本轮为未限速单样本，INP 待多次交互补充
+1. 性能/可访问指标以真实浏览器实测为准；本轮为未限速单样本，INP 待多次交互补充（性能 4→5 的唯一短板）
 2. 公网访问需在阿里云安全组放行 8081（本人无控制台权限）；长期形态建议迁项目自有域名 `<user>.cxbidding.com`
-3. 自动化门禁四卡口：`npm run lint` + `npm test`(单测) + `npm run e2e`(Playwright) + `npm run audit:gate`(生产依赖 high)；覆盖率卡口待接入
+3. 自动化门禁四卡口：`npm run lint` + `npm test`(单测) + `npm run e2e`(Playwright，先 `vite build` 保证测的是最新产物) + `npm run audit:gate`(生产依赖 high)；覆盖率卡口待接入
 4. 临时构建产物 dist/、含口令的临时文件均已清理

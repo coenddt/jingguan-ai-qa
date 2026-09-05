@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { qaApi } from '../api/modules/qa'
 import type { QaStreamEvent } from '../api/modules/qa'
 import { useSessionStore } from '../store/useSessionStore'
-import { getApiErrorMsg } from '../utils/error'
+import { getErrorMessage } from '../utils/error'
 import { writeJsonLS } from '../utils/localStorage'
 import { useSnackbar } from './useSnackbar'
 import type { MsgItem, QaAskResp, Step } from '../types'
@@ -100,9 +100,9 @@ export function useQaChat(selectedSources: string[]) {
     } catch (e) {
       // 主动中止（切会话/卸载）：不提示、不动占位（切会话时 messages 随即被历史覆盖）
       if (e instanceof DOMException && e.name === 'AbortError') return
-      // 失败：移除占位卡片，保留用户消息并提示
+      // 失败：移除占位卡片，保留用户消息并提示；透出具体错因（后端 detail / SSE 流内 error message）而非笼统兜底
       setMessages((prev) => prev.filter((m) => m.id !== aiId))
-      showSnackbar(getApiErrorMsg(e) || '问数请求失败，请稍后重试', 'error')
+      showSnackbar(getErrorMessage(e) || '问数请求失败，请稍后重试', 'error')
     } finally {
       if (abortRef.current === ac) abortRef.current = null
       setSending(false)

@@ -982,7 +982,7 @@ def test_computes_merge_depends_into_ast():
                                    'depends': ['child{c, d}']}}}
     ast = {'fields': ['a'], 'relations': {}}
     inject = comp._merge_depends_into_ast(ast, schema)
-    assert ast['relations']['child']['fields'] == ['c', 'd']
+    assert set(ast['relations']['child']['fields']) == {'c', 'd'}  # 依赖注入顺序由 set 决定
     assert inject['relations']['child'] == '__all__'
 
 
@@ -1007,3 +1007,191 @@ def test_computes_run_async_fns(monkeypatch):
     comp._defaults_cache.clear()
     asyncio.run(comp._run_async_fns([{'x': 1}], schema, None))
     assert ran  # 协程 asyncFn 被执行
+
+
+# ---------- query_executor.run 全链路 mock ----------
+
+import contextlib
+from app.services import query_executor as qx
+
+
+def _inject(monkeypatch):
+    from app.db.mongo_store import store as st
+    @contextlib.contextmanager
+    def _ctx(*a, **k):
+        yield
+    monkeypatch.setattr(st, 'scoped_roles', _ctx)
+    return st
+
+
+def test_query_executor_run_query_mode(monkeypatch):
+    import asyncio
+    st = _inject(monkeypatch)
+    gqls = []
+    async def fake_query(gql, params=None):
+        gqls.append(gql)
+        return [{'_id': '1', 'unit': 'a', 'income': 100}]
+    monkeypatch.setattr(st, 'query', fake_query)
+    q = {'model': 'CommercialLedger', 'mode': 'query', 'condition': {},
+         'fields': ['unit', 'income'], 'sort': {'income': -1}, 'limit': 50}
+    rows, truncated = asyncio.run(qx.run(q))
+    assert rows == [{'unit': 'a', 'income': 100}] and truncated is False
+    assert 'CommercialLedger' in gqls[0]  # GQL 含业务模型名
+
+
+def test_query_executor_run_aggregate_truncated(monkeypatch):
+    import asyncio
+    st = _inject(monkeypatch)
+    async def fake_agg(schema_name, pl):
+        return [{'unit': 'a', 'sum_income': 100}, {'unit': 'b', 'sum_income': 200}]
+    monkeypatch.setattr(st, 'aggregate', fake_agg)
+    q = {'model': 'ReportOverall', 'mode': 'aggregate', 'condition': {'year': 2026},
+         'groupBy': ['unit'], 'measures': [{'op': 'sum', 'field': 'income'}], 'limit': 1}
+    rows, truncated = asyncio.run(qx.run(q))
+    assert len(rows) == 1 and truncated is True
+
+
+def test_query_executor_run_model_not_in_whitelist(monkeypatch):
+    import asyncio
+    from app.services.query_guard import GuardError
+    _inject(monkeypatch)
+    with pytest.raises(GuardError):
+        asyncio.run(qx.run({'model': 'QaMessage', 'mode': 'query', 'condition': {},
+                            'fields': ['role'], 'limit': 5}))
+
+
+# ---------- query_cache 全链路 mock ----------
+
+from app.services import query_cache as qc
+
+
+def test_cache_exact_hit_miss(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    async def fake_q1(gql, params=None):
+        return None
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    assert asyncio.run(qc.exact_hit('问法')) is None
+
+
+def test_cache_exact_hit_hit(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    calls = []
+    async def fake_q1(gql, params=None):
+        return {'_id': 'e1', 'template': {'model': 'X'}}
+    async def fake_upd(*a, **k):
+        calls.append(k or a)
+        return None
+    async def fake_rai(fn):
+        await fn()
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    monkeypatch.setattr(st, 'update', fake_upd)
+    monkeypatch.setattr(st, 'run_as_internal', fake_rai)
+    ex = asyncio.run(qc.exact_hit('同款问法'))
+    assert ex['template']['model'] == 'X'
+    assert calls  # 命中后 hit 计数已执行
+
+
+def test_cache_top_k_fuzzy(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    async def fake_q(gql, params=None):
+        return [{'question': 'a', 'qnorm': '问题', 'template': {'m': 1}},
+                {'question': 'b', 'qnorm': '完全不同', 'template': {'m': 2}}]
+    monkeypatch.setattr(st, 'query', fake_q)
+    out = asyncio.run(qc.top_k_fuzzy('问题', k=5, min_score=0.0))
+    assert isinstance(out, list) and len(out) <= 2  # 仅作 few-shot，按分数截断
+    assert asyncio.run(qc.top_k_fuzzy('')) == []  # 空 key → 空
+
+
+def test_cache_upsert_new(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    inserted = []
+    async def fake_q1(gql, params=None):
+        return None
+    async def fake_ins(schema, data):
+        inserted.append((schema, data))
+        return None
+    async def fake_rai(fn):
+        await fn()
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    monkeypatch.setattr(st, 'insert', fake_ins)
+    monkeypatch.setattr(st, 'run_as_internal', fake_rai)
+    asyncio.run(qc.upsert('新问法', {'model': 'X'}, True))
+    assert inserted[0][0] == 'QueryExample'
+    assert inserted[0][1]['favor'] == 1 and inserted[0][1]['qnorm'] == qc.qnorm('新问法')
+
+
+def test_cache_upsert_existing_update(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    updates = []
+    async def fake_q1(gql, params=None):
+        return {'_id': 'e1', 'favor': 2, 'hit': 3}
+    async def fake_upd(schema, cond, data):
+        updates.append((cond, data))
+        return None
+    async def fake_rai(fn):
+        await fn()
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    monkeypatch.setattr(st, 'update', fake_upd)
+    monkeypatch.setattr(st, 'run_as_internal', fake_rai)
+    asyncio.run(qc.upsert('已知问法', {'model': 'Y'}, True))
+    assert updates[0][0] == {'_id': 'e1'}
+    assert updates[0][1]['$set']['template'] == {'model': 'Y'}  # 升级模板
+
+
+def test_cache_upsert_fail_downgrade(monkeypatch):
+    import asyncio
+    from app.db.mongo_store import store as st
+    updates = []
+    async def fake_q1(gql, params=None):
+        return {'_id': 'e1', 'favor': 5}
+    async def fake_upd(schema, cond, data):
+        updates.append((cond, data))
+        return None
+    async def fake_rai(fn):
+        await fn()
+    monkeypatch.setattr(st, 'query_one', fake_q1)
+    monkeypatch.setattr(st, 'update', fake_upd)
+    monkeypatch.setattr(st, 'run_as_internal', fake_rai)
+    asyncio.run(qc.upsert('差评问法', {}, False))
+    assert updates[0][1]['favor'] == 3  # 差评降权 favor-2
+
+
+def test_cache_upsert_empty_key(monkeypatch):
+    import asyncio
+    asyncio.run(qc.upsert('', {}, True))  # 空 key 直接返回，不触库
+
+
+# ---------- query_candidate 全链路 ----------
+
+from app.services import query_candidate as qcand
+
+
+def test_pick_checked_guard_error_vs_empty():
+    cands = [
+        ({'model': 'Evil', 'condition': {'$where': '1'}}, {'idx': 0, 'ok': True}),
+        (None, {'idx': 1, 'ok': False, 'error': 'boom'}),
+    ]
+    checked, statuses = qcand.pick_checked(cands)
+    assert checked == [] and statuses[0]['status'] == 'guard_error'  # verify 抛守卫错误
+    assert statuses[1]['status'] == 'empty'  # 生成失败
+
+
+def test_generate_candidates_with_prime(monkeypatch):
+    import asyncio
+    async def fake_invoke(scenario, vars_, conf):
+        return ({'model': 'CommercialLedger'}, {'total_tokens': 5, 'elapsed_s': 0.1,
+                'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
+    async def fake_chat(msgs, **k):
+        return {'elapsed_s': 0.1, 'cache_hit_tokens': 0, 'cache_miss_tokens': 0}
+    monkeypatch.setattr(llm_client, 'invoke', fake_invoke)
+    monkeypatch.setattr(llm_client, 'chat', fake_chat)
+    conf = {'platform': 'deepseek', 'baseUrl': '', 'apiKey': 'k', 'modelName': 'm'}
+    cands, prime = asyncio.run(qcand.generate_candidates('问题', [], conf, n=2, concurrency=2,
+                                                         preheat=True))
+    assert len(cands) == 2 and all(m['ok'] for _, m in cands)
+    assert prime and prime['ok'] is True  # 预热随批次并发

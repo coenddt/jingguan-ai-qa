@@ -15,25 +15,18 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    build: {
-      // 大体积第三方库按需拆成独立 chunk，主包只留业务代码，利于缓存与首屏
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (!id.includes('node_modules')) return
-            if (id.includes('echarts') || id.includes('zrender')) return 'charts-lazy'
-            if (id.includes('react') || id.includes('scheduler') || id.includes('react-dom')) return 'react'
-            if (id.includes('react-router')) return 'router'
-            if (id.includes('axios')) return 'http'
-            if (id.includes('dayjs')) return 'time'
-            if (id.includes('zustand')) return 'state'
-            if (id.includes('emoji-mart')) return 'emoji'
-            return 'vendor'
-          },
+    preview: {
+      // vite preview 生产预览：同样把 /api 转发到后端，保持端口直连即可访问完整功能
+      proxy: {
+        '/api': {
+          target: env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:8000',
+          changeOrigin: true,
         },
       },
-      // vendor/图表 chunk 体积大属预期，仅对超此阈值告警
-      chunkSizeWarningLimit: 700,
+    },
+    build: {
+      // 经实测 manualChunks 拆分会导致 React 运行时 useState undefined 崩溃（分包边界问题），
+      // 为保稳定性回退整体分包；真实性能收益已由路由级 React.lazy + ECharts 懒加载承担。
     },
   }
 })

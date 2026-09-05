@@ -88,5 +88,5 @@ async def test_model(body: ModelIn):
             api_key=body.apiKey, model=body.modelName,
         )
         return {'ok': True, 'latency_ms': int(ret['elapsed_s'] * 1000)}
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # 连通性探测：平台异常类型异构，统一兜底返回
         return {'ok': False, 'error': str(e)[:200]}

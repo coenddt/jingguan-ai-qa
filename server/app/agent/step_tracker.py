@@ -4,7 +4,7 @@ import time
 
 
 class StepTracker:
-    STEPS = ['理解问题', '生成查询', '安全校验', '执行取数', '生成结论']
+    STEPS = ('理解问题', '生成查询', '安全校验', '执行取数', '生成结论')
 
     def __init__(self) -> None:
         self._last = time.time()

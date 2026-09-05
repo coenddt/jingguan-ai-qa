@@ -398,7 +398,7 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
             await _record_failure(session, question, tracker, str(e), time.monotonic() - t0,
                                   tokens, model_conf)
         yield {'type': 'error', 'message': str(e)}
-    except Exception:
+    except Exception:  # noqa: BLE001  # 问数链路最外层兜底：必然结构化 error block
         if not saved:
             await _record_failure(session, question, tracker,
                                   traceback.format_exc(limit=10), time.monotonic() - t0,

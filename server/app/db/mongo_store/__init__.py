@@ -14,8 +14,11 @@ MongoStore — 轻量 MongoDB 数据层（Python 版）
     items = await store.query(`Model($condition:@c0) { field1, field2 }`, {'c0': {...}})
 """
 
-from . import crud, permission, pipeline, schema
 from typing import Any
+
+from pymongo.errors import PyMongoError
+
+from . import crud, permission, pipeline, schema
 
 
 async def aggregate(schema_name: str, pipeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -128,7 +131,7 @@ async def _create_indexes_if_needed(db):
         try:
             index_cursor = await coll.list_indexes()
             existing_indexes = await index_cursor.to_list(length=None)
-        except Exception:
+        except PyMongoError:
             existing_indexes = []
 
         for idx in s.get('indexes') or []:
@@ -147,7 +150,7 @@ async def _create_indexes_if_needed(db):
                     continue
 
                 await coll.create_index(list(keys.items()), **final_options)
-            except Exception as e:
+            except PyMongoError as e:
                 import sys
                 print(f'[MongoStore] 创建索引失败 {s["collection"]}: {e}', file=sys.stderr)
 

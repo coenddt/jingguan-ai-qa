@@ -34,6 +34,6 @@ async def record(*, category: str, trigger_point: str, reason: str,
         return await store.insert('AutoFeedback', doc)
     try:
         await store.run_as_internal(_write)
-    except Exception as e:  # 告警本身失败不能击穿调用方：只记日志，暴露写失败征象
+    except Exception as e:  # noqa: BLE001  # 告警本身失败不能击穿调用方：只记日志，暴露写失败征象
         log('error', 'auto_feedback_fail', error=str(e),
             category=category, trigger=trigger_point)

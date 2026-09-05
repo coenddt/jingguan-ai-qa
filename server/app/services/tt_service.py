@@ -39,8 +39,7 @@ async def synthesize(text: str) -> bytes:
         'X-Api-Resource-Id': TTS_RESOURCE_ID,
     }
     chunks: list[bytes] = []
-    async with httpx.AsyncClient(timeout=TTS_TIMEOUT) as client:
-        async with client.stream('POST', TTS_API_URL, json=payload, headers=headers) as resp:
+    async with httpx.AsyncClient(timeout=TTS_TIMEOUT) as client, client.stream('POST', TTS_API_URL, json=payload, headers=headers) as resp:
             if resp.status_code != 200:
                 detail = (await resp.aread())[:200].decode('utf-8', 'ignore')
                 raise BusinessError(f'TTS 服务错误 {resp.status_code}: {detail}', 502)

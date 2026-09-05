@@ -77,10 +77,10 @@ def _check(value: Any, spec: dict, path: str) -> None:
     want = _TYPE_MAP.get(spec_type if isinstance(spec_type, str) else '')
     enum = spec.get('enum')
 
-    if want is not None:
+    if want is not None and (not isinstance(value, want)
+                             or (spec.get('type') == 'integer' and isinstance(value, bool))):
         # integer 排除 bool（Python 中 bool 是 int 子类，需单独排除）
-        if not isinstance(value, want) or (spec.get('type') == 'integer' and isinstance(value, bool)):
-            _fail(path, f'应为 {spec.get("type")}，实为 {type(value).__name__}')
+        _fail(path, f'应为 {spec.get("type")}，实为 {type(value).__name__}')
     if enum is not None and value not in enum:
         _fail(path, f'不在枚举内: {value!r}，可选 {enum}')
 

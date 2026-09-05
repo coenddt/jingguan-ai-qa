@@ -48,9 +48,7 @@ def evaluate(ctx, role_list, doc=_MISSING):
             return True
         if ctx.get('internal'):
             return True
-        if 'guest' in (ctx.get('roles') or []):
-            return False
-        return True
+        return 'guest' not in (ctx.get('roles') or [])
 
     if ctx is None:
         return True
@@ -109,9 +107,7 @@ def should_inject_owner_condition(schema, ctx):
         real_roles = [r for r in read if r != 'creator']
         if any(r in effective_roles for r in real_roles):
             return False
-    if read and 'creator' in read:
-        return True
-    return False
+    return bool(read and 'creator' in read)
 
 
 def merge_owner_condition(schema, ctx, condition):

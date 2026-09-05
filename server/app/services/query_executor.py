@@ -8,28 +8,45 @@ from app.models.registry import MODEL_TABLE
 from app.services.query_guard import GuardError, measure_key, verify
 
 
+def _group_doc(q: dict) -> dict:
+    """构建 $group 文档（含聚合键命名 sum_字段/count_all）"""
+    group_id = {g: f'${g}' for g in q['groupBy']} if len(q['groupBy']) > 1 else f'${q["groupBy"][0]}'
+    doc: dict = {'_id': group_id}
+    for m in q['measures']:
+        key = measure_key(m)
+        doc[key] = {'$sum': 1} if m['op'] == 'count' else {f'${m["op"]}': f'${m["field"]}'}
+    return doc
+
+
+def _sort_stage(q: dict, group_doc: dict) -> dict | None:
+    """排序：显式 sort 用之；否则按首个聚合键倒序（保证结果稳定可预判）"""
+    if q.get('sort'):
+        return {'$sort': q['sort']}
+    first_key = next(iter([k for k in group_doc if k != '_id']), None)
+    return {'$sort': {first_key: -1}} if first_key else None
+
+
+def _project_stage(q: dict) -> dict:
+    """$project：还原分组维度 + 聚合键透出，剔除 _id"""
+    multi = len(q['groupBy']) > 1
+    proj: dict = {g: f'$_id.{g}' if multi else '$_id' for g in q['groupBy']}
+    for m in q['measures']:
+        proj[measure_key(m)] = 1
+    return proj
+
+
 def _build_pipeline(q: dict) -> list[dict]:
     """受限聚合 pipeline（$match/$group/$sort/$limit/$project，经 guard 后组装）"""
     pl: list[dict] = []
     if q.get('condition'):
         pl.append({'$match': q['condition']})
-    group_id = {g: f'${g}' for g in q['groupBy']} if len(q['groupBy']) > 1 else f'${q["groupBy"][0]}'
-    group_doc: dict = {'_id': group_id}
-    for m in q['measures']:
-        key = measure_key(m)
-        group_doc[key] = {'$sum': 1} if m['op'] == 'count' else {f'${m["op"]}': f'${m["field"]}'}
+    group_doc = _group_doc(q)
     pl.append({'$group': group_doc})
-    if q.get('sort'):
-        pl.append({'$sort': q['sort']})
-    else:
-        first_key = next(iter([k for k in group_doc if k != '_id']), None)
-        if first_key:
-            pl.append({'$sort': {first_key: -1}})
+    sort_stage = _sort_stage(q, group_doc)
+    if sort_stage:
+        pl.append(sort_stage)
     pl.append({'$limit': q['limit']})
-    project: dict = {g: f'$_id.{g}' if len(q['groupBy']) > 1 else '$_id' for g in q['groupBy']}
-    for m in q['measures']:
-        project[measure_key(m)] = 1
-    pl.append({'$project': project})
+    pl.append({'$project': _project_stage(q)})
     return pl
 
 

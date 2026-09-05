@@ -63,7 +63,7 @@ async def upload(type: str, year: int, file: UploadFile):
         wb = load_workbook(io.BytesIO(content), read_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
-    except Exception:
+    except Exception:  # noqa: BLE001  # 解析失败属"格式不符"，openpyxl/zipfile 异构异常统一兜底
         await _log(type, year, (file.filename or ''), 0, 0, '失败-格式不符', '文件解析失败')
         raise BusinessError('xlsx 解析失败', 400)
     if not rows or list(rows[0])[:len(cols)] != cols:
@@ -77,7 +77,7 @@ async def upload(type: str, year: int, file: UploadFile):
             continue
         try:
             docs.append(_parse_row(type, year, row))
-        except Exception as e:
+        except (ValueError, TypeError, IndexError) as e:
             errors.append(f'第{i + 2}行: {e}')
     status = '成功' if not errors and docs else ('部分成功' if docs else '失败-格式不符')
     if docs:

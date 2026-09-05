@@ -25,7 +25,7 @@ def verify_token(token: str | None) -> dict | None:
         return None
     try:
         payload = json.loads(base64.urlsafe_b64decode(raw.encode()))
-    except Exception:
+    except (ValueError, TypeError):
         return None
     if int(payload.get('exp', 0)) < int(time.time()):
         return None

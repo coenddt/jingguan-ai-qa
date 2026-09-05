@@ -36,11 +36,11 @@ async def generate_candidates(question: str, few_shots: list, model_conf: dict,
     sem = asyncio.Semaphore(max(int(concurrency), 1))
 
     def _base_args():
-        return dict(
-            base_url=llm_client.resolve_base_url(model_conf['platform'], model_conf.get('baseUrl')),
-            api_key=model_conf.get('apiKey'),
-            model=model_conf.get('modelName'),
-        )
+        return {
+            'base_url': llm_client.resolve_base_url(model_conf['platform'], model_conf.get('baseUrl')),
+            'api_key': model_conf.get('apiKey'),
+            'model': model_conf.get('modelName'),
+        }
 
     async def _one(i: int):
         variables = {'question': question, 'few_shots': few_shots if i == 0 else []}
@@ -52,7 +52,7 @@ async def generate_candidates(question: str, few_shots: list, model_conf: dict,
                            'tokens': ret.get('total_tokens'),
                            'cache_hit': ret.get('cache_hit_tokens'),
                            'cache_miss': ret.get('cache_miss_tokens')}
-            except Exception as e:  # 单候选失败不阻断其余
+            except Exception as e:  # noqa: BLE001  # 单候选失败不阻断批次，交由择优/兜底反馈
                 return None, {'idx': i, 'ok': False, 'error': str(e),
                               'elapsed_s': round(time.monotonic() - t0, 2)}
 
@@ -67,7 +67,7 @@ async def generate_candidates(question: str, few_shots: list, model_conf: dict,
                 return {'ok': True, 'elapsed_s': ret.get('elapsed_s'),
                         'cache_hit': ret.get('cache_hit_tokens'),
                         'cache_miss': ret.get('cache_miss_tokens')}
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # 预热失败不阻断主路径，仅记录
                 return {'ok': False, 'error': str(e),
                         'elapsed_s': round(time.monotonic() - t0, 2)}
 

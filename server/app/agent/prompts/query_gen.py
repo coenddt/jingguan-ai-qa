@@ -27,6 +27,7 @@ SYSTEM_TMPL = """你是数据查询生成器。根据用户问题，从给定模
 - 汇总统计 → {{"mode":"aggregate","model":"...","condition":{{}},"groupBy":["..."],"measures":[{{"op":"sum","field":"..."}}],"sort":{{}},"limit":50}}
 - condition 支持 $eq/$gt/$gte/$lt/$lte/$in/$ne/$exists；sort 的键必须是该模型字段（aggregate 时 sort 键为 groupBy 字段或聚合键 op_field）；limit ≤ 200
 - 涉及收入/金额汇总优先 aggregate；涉及目标/完成率用 ReportOverall(收入) 与 GoalLedger(目标) 分别查询（只选一个主模型）
+- 求整体汇总指标（总金额/总收入/平均值/共多少单等，无分组维度）时 groupBy 固定取 ["year"]（返回单行）；计数类用 {{"op":"count","field":""}}
 - 年份缺省取 2026；条件值必须来自维度枚举，禁止编造
 {few_shot}"""
 
@@ -34,6 +35,8 @@ MODEL_JSON_EXAMPLES = [
     '问"2026年各经营单元收入排名" → {"mode":"aggregate","model":"ReportOverall","condition":{"year":{"$eq":2026}},"groupBy":["unit"],"measures":[{"op":"sum","field":"income"}],"sort":{"sum_income":-1},"limit":21}',
     '问"政企行业收入3000万-5000万数据" → {"mode":"query","model":"CommercialLedger","condition":{"year":{"$eq":2026},"industry":{"$eq":"政企"},"income":{"$gte":3000,"$lte":5000}},"fields":["signDate","unit","productLine","income","customer"],"sort":{"income":-1},"limit":100}',
     '问"各产品线销售情况" → {"mode":"aggregate","model":"ReportProduct","condition":{"year":{"$eq":2026}},"groupBy":["productLine"],"measures":[{"op":"sum","field":"income"}],"sort":{"sum_income":-1},"limit":10}',
+    '问"2026年签约总金额是多少" → {"mode":"aggregate","model":"CommercialLedger","condition":{"year":{"$eq":2026}},"groupBy":["year"],"measures":[{"op":"sum","field":"contractAmt"}],"sort":{},"limit":10}',
+    '问"2026年共签了多少单" → {"mode":"aggregate","model":"CommercialLedger","condition":{"year":{"$eq":2026}},"groupBy":["year"],"measures":[{"op":"count","field":""}],"sort":{},"limit":10}',
 ]
 
 RETRY_TMPL = '用户问题：{question}\n上次生成的查询：{bad_query}\n错误：{error}\n请修正后重新只输出查询 JSON。'

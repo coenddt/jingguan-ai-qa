@@ -28,6 +28,8 @@ SYSTEM_TMPL = """你是数据查询生成器。根据用户问题，从给定模
 - condition 支持 $eq/$gt/$gte/$lt/$lte/$in/$ne/$exists；sort 的键必须是该模型字段（aggregate 时 sort 键为 groupBy 字段或聚合键 op_field）；limit ≤ 200
 - 涉及收入/金额汇总优先 aggregate；涉及目标/完成率用 ReportOverall(收入) 与 GoalLedger(目标) 分别查询（只选一个主模型）
 - 求整体汇总指标（总金额/总收入/平均值/共多少单等，无分组维度）时 groupBy 固定取 ["year"]（返回单行）；计数类用 {{"op":"count","field":""}}
+- 按维度求"平均/最高/最低"（问题含"各/每个/按某维度"分组词，如"各产品线的平均/单笔最高/单笔最低签约额"）→ groupBy 该维度 + measures 用 avg/max/min；切勿降级成整体排序明细
+- 无分组词的整体求平均/最高/最低（如"重点单元平均订单金额"）→ groupBy 固定取 ["year"]（单行），勿按隐含维度分组
 - 年份缺省取 2026；条件值必须来自维度枚举，禁止编造
 {few_shot}"""
 
@@ -37,6 +39,8 @@ MODEL_JSON_EXAMPLES = [
     '问"各产品线销售情况" → {"mode":"aggregate","model":"ReportProduct","condition":{"year":{"$eq":2026}},"groupBy":["productLine"],"measures":[{"op":"sum","field":"income"}],"sort":{"sum_income":-1},"limit":10}',
     '问"2026年签约总金额是多少" → {"mode":"aggregate","model":"CommercialLedger","condition":{"year":{"$eq":2026}},"groupBy":["year"],"measures":[{"op":"sum","field":"contractAmt"}],"sort":{},"limit":10}',
     '问"2026年共签了多少单" → {"mode":"aggregate","model":"CommercialLedger","condition":{"year":{"$eq":2026}},"groupBy":["year"],"measures":[{"op":"count","field":""}],"sort":{},"limit":10}',
+    '问"2026年各产品线单笔最高的签约金额" → {"mode":"aggregate","model":"CommercialLedger","condition":{"year":{"$eq":2026}},"groupBy":["productLine"],"measures":[{"op":"max","field":"contractAmt"}],"sort":{"max_contractAmt":-1},"limit":50}',
+    '问"2026年各产品线单笔最低的签约金额" → {"mode":"aggregate","model":"CommercialLedger","condition":{"year":{"$eq":2026}},"groupBy":["productLine"],"measures":[{"op":"min","field":"contractAmt"}],"sort":{"min_contractAmt":-1},"limit":50}',
 ]
 
 RETRY_TMPL = '用户问题：{question}\n上次生成的查询：{bad_query}\n错误：{error}\n请修正后重新只输出查询 JSON。'

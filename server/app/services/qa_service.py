@@ -38,6 +38,7 @@ from app.services import (
     query_executor,
 )
 from app.services.json_schema_shell import ShellError
+from app.services.query_clarify import completeness_issues
 from app.services.query_guard import GuardError, measure_key, verify
 
 
@@ -138,6 +139,25 @@ def _log_step(tracker: StepTracker, idx: int) -> None:
         status='done' if it['done'] else 'fail', desc=it['desc'])
 
 
+async def _build_clarify_resp(session: dict, tracker: StepTracker, model_conf: dict,
+                              t0: float, tokens: int, clarify_text: str) -> dict:
+    return {
+        'session_id': session['_id'],
+        'steps': tracker.out(),
+        'findings': [], 'columns': [], 'rows': [],
+        'stats': {'count': 0, 'avg': 0, 'max': 0, 'max_of': '-', 'min': 0, 'min_of': '-'},
+        'chart': None,
+        'text': clarify_text, 'follow_ups': [],
+        'clarify': clarify_text,
+        'query_source': None, 'truncated': False, 'row_count': 0,
+        'meta': {
+            'elapsed_s': round(time.monotonic() - t0, 2), 'tokens': tokens,
+            'model': model_conf['name'], 'modelName': model_conf.get('modelName', ''),
+            'platform': model_conf['platform'],
+        },
+    }
+
+
 async def ask_stream(question: str, session_id: str | None, source_keys: list[str],
                      user_name: str = '管理员'):
     """流式问数编排：逐步 yield SSE 事件；逻辑与非流式版一致，异常统一转 error 事件"""
@@ -195,6 +215,23 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                     question=question, query_raw=ex['template'])
 
         if rows is None:
+            # —— A：生成前意图门（软门；异常不阻断，直接走 query_gen）——
+            intent_q: str | None = None
+            try:
+                intent, _ret = await llm_client.invoke('intent_gate', {'question': question}, model_conf)
+                if intent.get('need_more_info'):
+                    intent_q = intent.get('question') or ''
+            except Exception:
+                intent_q = None
+            if intent_q:
+                tracker.done(1, f'问题条件不足，已追问澄清：{intent_q}')
+                yield _step_ev(tracker, 1)
+                resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, intent_q)
+                await _save_messages(session, question, resp, user_name)
+                saved = True
+                yield {'type': 'done', 'data': resp}
+                return
+
             few = await query_cache.top_k_fuzzy(question)
             # 阶段三：热度分级——best fuzzy score 命中阈值 → warm(低开销 1 候选) / cold(候选兜底)
             best_score = few[0]['score'] if few else 0.0
@@ -263,6 +300,15 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                         base_bad = cast(dict, q)  # 供下一轮错误反馈
                         query_raw = cast(dict, q)
                         checked = verify(cast(dict, q))
+                        issues = completeness_issues(checked)
+                        if issues is not None:   # —— B：生成后完整度校验（硬门）——
+                            tracker.done(2, f'查询缺少必要条件，已追问澄清：{issues}')
+                            yield _step_ev(tracker, 2)
+                            resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, issues)
+                            await _save_messages(session, question, resp, user_name)
+                            saved = True
+                            yield {'type': 'done', 'data': resp}
+                            return
                         tracker.done(2, f'守卫校验通过：模型/字段/操作符均在白名单内，强制行数上限 {MAX_LIMIT}')
                         yield _step_ev(tracker, 2)
                         _log_step(tracker, 2)

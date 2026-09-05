@@ -53,6 +53,20 @@ export default function AiCard({ resp, question, streaming, createdAt }: Props) 
   const hasChart = !streaming || 'chart' in resp
   const hasText = !streaming || 'text' in resp
 
+  // 条件不足澄清卡：不渲染完整报告块
+  if (resp.clarify) {
+    return (
+      <div className="qa-ai-msg">
+        <div className="qa-ai-card">
+          <div className="qa-ai-avatar" style={{ marginBottom: 12 }}><i className="fas fa-robot" /></div>
+          <div className="mod-body">
+            <div className="dot-li">{resp.clarify}</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="qa-ai-msg">
       <div className="qa-ai-card">

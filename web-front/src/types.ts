@@ -85,6 +85,8 @@ export interface QaAskResp {
   row_count?: number
   /** 问数失败时的错误详情（含步骤/耗时），成功时无此字段 */
   error?: string
+  /** 条件不足澄清追问文案；存在时表示该条为澄清而非完整回答 */
+  clarify?: string
   meta: QaAskMeta
 }
 

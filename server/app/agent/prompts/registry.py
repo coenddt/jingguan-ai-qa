@@ -1,8 +1,8 @@
 """提示词场景注册表：新增场景 = 新建场景模块（PARAMS + build）+ 此处注册一行"""
 
-from app.agent.prompts import conclusion, query_gen
+from app.agent.prompts import conclusion, intent_gate, query_gen
 
-SCENARIOS = {'query_gen': query_gen, 'conclusion': conclusion}
+SCENARIOS = {'query_gen': query_gen, 'conclusion': conclusion, 'intent_gate': intent_gate}
 
 
 def build_messages(scenario_id: str, variables: dict) -> list[dict]:

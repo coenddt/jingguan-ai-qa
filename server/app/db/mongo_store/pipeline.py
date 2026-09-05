@@ -101,8 +101,8 @@ def parse(tokens):
         return p
 
     def parse_body():
-        fields = []
-        relations = {}
+        fields: list = []
+        relations: dict = {}
         tk = peek()
         if not tk or tk['t'] != 'p' or tk['v'] != '{':
             return {'fields': fields, 'relations': relations}

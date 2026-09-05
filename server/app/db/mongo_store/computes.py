@@ -81,7 +81,7 @@ def apply_defaults_and_computes(doc, schema):
 
 # ─── 默认值缓存 + 递归处理器（GQL 查询用） ────────────────
 
-_defaults_cache = {}
+_defaults_cache: dict = {}
 
 
 def _ensure_cache(schema):
@@ -143,7 +143,7 @@ def _merge_depends_into_ast(ast, schema):
         return {'relations': {}}
 
     # rel_deps: { rel_name → set(fields) }，空 set = 整条文档
-    rel_deps = {}
+    rel_deps: dict = {}
 
     for entry in cache['async_fn_list']:
         for dep in entry['depends'] or []:
@@ -242,7 +242,7 @@ def process_node(doc, ast_node, schema, ctx):
                 needed_arr.append(dep)
 
     # 收集点号嵌套字段信息 { root → [subPath, ...] }
-    dot_fields = {}
+    dot_fields: dict = {}
     for f in ast_node['fields']:
         if '.' in f:
             root, sub = f.split('.', 1)

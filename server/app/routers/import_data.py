@@ -55,7 +55,7 @@ async def upload(type: str, year: int, file: UploadFile):
         raise BusinessError('type 参数不合法', 400)
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        await _log(type, year, file.filename, 0, 0, '失败-文件超限',
+        await _log(type, year, (file.filename or ''), 0, 0, '失败-文件超限',
                    f'文件 {len(content)} 字节超上限 {MAX_UPLOAD_BYTES}')
         raise BusinessError('文件过大（上限 2MB）', 400)
     cols = TEMPLATE_COLUMNS[type]
@@ -64,10 +64,10 @@ async def upload(type: str, year: int, file: UploadFile):
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
     except Exception:
-        await _log(type, year, file.filename, 0, 0, '失败-格式不符', '文件解析失败')
+        await _log(type, year, (file.filename or ''), 0, 0, '失败-格式不符', '文件解析失败')
         raise BusinessError('xlsx 解析失败', 400)
     if not rows or list(rows[0])[:len(cols)] != cols:
-        await _log(type, year, file.filename, max(0, len(rows) - 1), 0, '失败-格式不符', '表头与模板不一致')
+        await _log(type, year, (file.filename or ''), max(0, len(rows) - 1), 0, '失败-格式不符', '表头与模板不一致')
         raise BusinessError('表头与模板不一致，请下载模板填写', 400)
 
     docs: list[dict] = []
@@ -83,7 +83,7 @@ async def upload(type: str, year: int, file: UploadFile):
     if docs:
         await store.remove(type_collection(type), {'year': year})
         await store.insert_many(type_collection(type), docs)
-    await _log(type, year, file.filename or '', len(rows) - 1, len(docs), status, '; '.join(errors[:5]))
+    await _log(type, year, (file.filename or '') or '', len(rows) - 1, len(docs), status, '; '.join(errors[:5]))
     return {'ok': status != '失败-格式不符', 'status': status, 'total': max(0, len(rows) - 1),
             'success': len(docs), 'errors': errors[:10]}
 

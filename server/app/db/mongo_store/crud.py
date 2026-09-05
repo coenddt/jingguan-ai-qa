@@ -234,7 +234,7 @@ async def query_with_count(gql: str, params: dict | None = None) -> dict[str, An
     items = await query(gql, params)
 
     # ── 统计 total（忽略 skip/limit） ──
-    count_filter = {}
+    count_filter: dict = {}
     cond_ref = ast['params'].get('condition')
     if cond_ref:
         count_filter = params.get(cond_ref[1:]) or {}

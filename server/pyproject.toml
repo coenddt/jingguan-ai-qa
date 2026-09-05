@@ -27,3 +27,8 @@ disallow_untyped_defs = false
 disallow_untyped_calls = false
 disallow_incomplete_defs = false
 warn_return_any = false
+
+# 三方强动态无 stub 依赖：跳过 import-untyped 告警
+[[tool.mypy.overrides]]
+module = ["openpyxl.*"]
+ignore_missing_imports = true

@@ -12,10 +12,12 @@ async def _load_all() -> dict:
     rows = await store.query('AppConfig { key, value }')
     data = {k: (dict(v) if isinstance(v, dict) else v) for k, v in APP_CONFIG_DEFAULTS.items()}
     for r in rows:
-        if r['key'] in data and isinstance(r.get('value'), dict) and isinstance(data[r['key']], dict):
-            data[r['key']].update(r['value'])
-        elif r['key'] in data:
-            data[r['key']] = r['value']
+        key = str(r['key'])
+        val = r.get('value')
+        if key in data and isinstance(val, dict) and isinstance(data[key], dict):
+            data[key].update(val)
+        elif key in data:
+            data[key] = val
     return data
 
 

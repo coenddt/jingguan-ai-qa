@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from app.db.mongo_store import store
 from app.models.schema import ALL_SCHEMAS
 
@@ -18,6 +20,7 @@ def register_all() -> None:
     if REGISTERED:
         return
     for s in ALL_SCHEMAS:
-        store.register(s)
-        REGISTERED.append(s['name'])
-        MODEL_TABLE[s['name']] = s
+        sd = cast(dict[str, Any], s)
+        store.register(sd)
+        REGISTERED.append(sd['name'])
+        MODEL_TABLE[sd['name']] = sd

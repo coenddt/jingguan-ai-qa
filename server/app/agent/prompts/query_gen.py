@@ -51,7 +51,7 @@ def _system_prompt(few_shots: list[dict] | None) -> str:
     few = ''
     if few_shots:
         lines = [f'- "{e["question"]}" → {json.dumps(e["template"], ensure_ascii=False)}'
-                 for e in few_shots[:PARAMS['few_shot_max']]]
+                 for e in few_shots[:int(PARAMS['few_shot_max'])]]
         few = '\n参考以下历史成功问法（仅作参考，仍需按当前问题生成）：\n' + '\n'.join(lines)
     return SYSTEM_TMPL.format(models=models, few_shot=few) + '\n输出示例：\n' + '\n'.join(MODEL_JSON_EXAMPLES)
 

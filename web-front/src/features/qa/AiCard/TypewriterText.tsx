@@ -10,6 +10,11 @@ export default function TypewriterText({ content }: { content: string }) {
 
   useEffect(() => {
     if (!content) return
+    // 无障碍：用户偏好减弱动画时直接展示完整内容，不做逐字打字
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {
+      setN(content.length)
+      return
+    }
     let n = 0
     let acc = 0
     let raf = 0

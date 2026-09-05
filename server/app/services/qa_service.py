@@ -8,6 +8,7 @@ block（findings/table/stats/chart/text/follow_ups 逐块）→ done（最终完
 import json
 import time
 import traceback
+from typing import cast
 
 from app.agent.prompts import scenario_params
 from app.agent.step_tracker import StepTracker
@@ -256,9 +257,9 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                             elapsed_s=ret.get('elapsed_s'), tokens=ret.get('total_tokens'),
                             cache_hit=ret.get('cache_hit_tokens'),
                             cache_miss=ret.get('cache_miss_tokens'))
-                        base_bad = q  # 供下一轮错误反馈
-                        query_raw = q
-                        checked = verify(q)
+                        base_bad = cast(dict, q)  # 供下一轮错误反馈
+                        query_raw = cast(dict, q)
+                        checked = verify(cast(dict, q))
                         tracker.done(2, f'守卫校验通过：模型/字段/操作符均在白名单内，强制行数上限 {MAX_LIMIT}')
                         yield _step_ev(tracker, 2)
                         _log_step(tracker, 2)
@@ -286,6 +287,8 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                         log('info', 'ask_retry', attempt=attempt, error=last_err)
                         yield _step_running(2)
 
+        assert rows is not None      # 执行阶段后必有结果行
+        assert used_query is not None  # 必有执行模板
         yield _step_running(3)
         tracker.done(3, f'执行取数完成，返回 {len(rows)} 条{ "（已截断）" if truncated else "" }')
         yield _step_ev(tracker, 3)
@@ -346,6 +349,7 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
         yield _step_ev(tracker, 4)
         _log_step(tracker, 4)
 
+        assert isinstance(conclusion, dict)  # conclusion 场景必定返回字典
         text = conclusion.get('text', '')
         follow_ups = (conclusion.get('follow_ups') or [])[:QA_FOLLOW_UPS]
         yield {'type': 'block', 'name': 'text', 'data': text}

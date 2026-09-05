@@ -10,7 +10,8 @@ from app.services.query_guard import GuardError, measure_key, verify
 
 def _group_doc(q: dict) -> dict:
     """构建 $group 文档（含聚合键命名 sum_字段/count_all）"""
-    group_id = {g: f'${g}' for g in q['groupBy']} if len(q['groupBy']) > 1 else f'${q["groupBy"][0]}'
+    single = len(q['groupBy']) == 1
+    group_id = {g: f'${g}' for g in q['groupBy']} if not single else f'${q["groupBy"][0]}'
     doc: dict = {'_id': group_id}
     for m in q['measures']:
         key = measure_key(m)

@@ -126,7 +126,8 @@ def _group_by_checked(query: dict, field_names: set) -> list:
 def _verify_aggregate(query: dict, fields_def: dict, field_names: set):
     """校验聚合查询：分组、指标白名单；返回 (group_by, 规范化指标, 排序键允许集)"""
     group_by = _group_by_checked(query, field_names)
-    norm_measures = [_normalize_measure(m, fields_def, field_names) for m in (query.get('measures') or [])]
+    measures = query.get('measures') or []
+    norm_measures = [_normalize_measure(m, fields_def, field_names) for m in measures]
     if not norm_measures:
         raise GuardError('缺少聚合指标')
     allowed_sort = set(group_by) | {measure_key(m) for m in norm_measures}
@@ -147,5 +148,6 @@ def _normalize_measure(m: dict, fields_def: dict, field_names: set) -> dict:
 
 
 def measure_key(m: dict) -> str:
+    """聚合键命名：op_field（$project 后透出字段，供排序/图表引用）"""
     field = m.get('field') or 'all'
     return f"{m['op']}_{field}"

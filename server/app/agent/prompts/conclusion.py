@@ -9,7 +9,12 @@ variables 契约：
 import json
 
 # 场景特定参数：结论允许适度发挥，失败无重试（守卫链路之外的展示层场景）
-PARAMS = {'temperature': 0.3, 'json': True, 'retries': 0}
+# max_tokens 封顶 512：输出规格=2-4 句结论+3 条追问，留足余量且防止无界长输出拖慢 completion
+# reasoning=disabled 语义：不需要模型思考（纯可见输出）。本模型默认带思考（实测吞 ~500 token），
+# 思考计入 max_tokens 且大幅拖长 completion；关闭后仅剩可见输出（~130-300 token），
+# 既保 max_tokens 生效又大幅缩短结论耗时。具体请求体由 llm_client 平台层翻译（场景层不耦合平台姿势）。
+PARAMS = {'temperature': 0.3, 'json': True, 'retries': 0, 'max_tokens': 512,
+          'reasoning': 'disabled'}
 
 SYSTEM_TMPL = (
     '你是经营数据分析助手。基于给定的真实查询结果行生成分析结论。'

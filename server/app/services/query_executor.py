@@ -39,8 +39,7 @@ async def run(q: dict) -> tuple[list[dict], bool]:
     model = checked['model']
     if model not in MODEL_TABLE:
         raise GuardError(f'模型不在白名单: {model}')
-    store.set_context({'roles': ['query']})
-    try:
+    with store.scoped_roles(['query']):  # 只读角色注入（token-reset，嵌套安全）
         if checked['mode'] == 'query':
             fields = ', '.join(checked['fields'])
             gql = f'{model}($condition:@c0,$sort:@s0,$skip:@sk,$limit:@l) {{ {fields} }}'
@@ -52,8 +51,6 @@ async def run(q: dict) -> tuple[list[dict], bool]:
         else:
             pl = _build_pipeline(checked)
             rows = await asyncio.wait_for(store.aggregate(model, pl), EXEC_TIMEOUT)
-    finally:
-        store.set_context(None)
     truncated = False
     if len(rows) > checked['limit']:
         rows = rows[:checked['limit']]

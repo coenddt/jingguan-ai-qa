@@ -1,6 +1,12 @@
 """AI 查询只读守卫（纯校验，无副作用）：模型/字段/操作符/聚合白名单 + 行数上限"""
 
-from app.config import ALLOWED_MEASURES, ALLOWED_OPS, DENIED_OPS, MAX_LIMIT, NUMERIC_TYPES
+from app.config import (
+    ALLOWED_MEASURES,
+    ALLOWED_OPS,
+    DENIED_OPS,
+    MAX_LIMIT,
+    NUMERIC_TYPES,
+)
 from app.models.registry import BUSINESS_MODELS, MODEL_TABLE
 
 
@@ -60,8 +66,7 @@ def verify(query: dict) -> dict:
         fields = list(fields_def)
 
     limit = int(query.get('limit') or MAX_LIMIT)
-    if limit > MAX_LIMIT:
-        limit = MAX_LIMIT
+    limit = min(limit, MAX_LIMIT)
 
     checked = {
         'model': model,
@@ -72,27 +77,9 @@ def verify(query: dict) -> dict:
     }
 
     if checked['mode'] == 'aggregate':
-        group_by = query.get('groupBy') or []
-        bad_group = [g for g in group_by if g not in field_names]
-        if not group_by or bad_group:
-            raise GuardError(f'分组字段越界: {bad_group or "缺少groupBy"}')
-        measures = query.get('measures') or []
-        if not measures:
-            raise GuardError('缺少聚合指标')
-        norm_measures = []
-        for m in measures:
-            op = m.get('op')
-            field = m.get('field')
-            if op not in ALLOWED_MEASURES:
-                raise GuardError(f'聚合算子越界: {op}')
-            if op != 'count' and field not in field_names:
-                raise GuardError(f'聚合字段越界: {field}')
-            if op != 'count' and field and fields_def[field]['type'] not in NUMERIC_TYPES:
-                raise GuardError(f'聚合目标非数值: {field}')
-            norm_measures.append({'op': op, 'field': field})
+        group_by, norm_measures, allowed_sort = _verify_aggregate(
+            query, fields_def, field_names)
         checked.update({'groupBy': group_by, 'measures': norm_measures})
-        # 聚合模式排序键允许：分组字段 + 计算列 op_field（$project 后的字段）
-        allowed_sort = set(group_by) | {measure_key(m) for m in norm_measures}
     else:
         allowed_sort = field_names
 
@@ -104,6 +91,31 @@ def verify(query: dict) -> dict:
     checked['limit'] = limit
 
     return checked
+
+
+def _verify_aggregate(query: dict, fields_def: dict, field_names: set):
+    """校验聚合查询：分组、指标白名单；返回 (group_by, 规范化指标, 排序键允许集)"""
+    group_by = query.get('groupBy') or []
+    bad_group = [g for g in group_by if g not in field_names]
+    if not group_by or bad_group:
+        raise GuardError(f'分组字段越界: {bad_group or "缺少groupBy"}')
+    measures = query.get('measures') or []
+    if not measures:
+        raise GuardError('缺少聚合指标')
+    norm_measures = []
+    for m in measures:
+        op = m.get('op')
+        field = m.get('field')
+        if op not in ALLOWED_MEASURES:
+            raise GuardError(f'聚合算子越界: {op}')
+        if op != 'count' and field not in field_names:
+            raise GuardError(f'聚合字段越界: {field}')
+        if op != 'count' and field and fields_def[field]['type'] not in NUMERIC_TYPES:
+            raise GuardError(f'聚合目标非数值: {field}')
+        norm_measures.append({'op': op, 'field': field})
+    # 聚合模式排序键允许：分组字段 + 计算列 op_field（$project 后的字段）
+    allowed_sort = set(group_by) | {measure_key(m) for m in norm_measures}
+    return group_by, norm_measures, allowed_sort
 
 
 def measure_key(m: dict) -> str:

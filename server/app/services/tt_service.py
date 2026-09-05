@@ -6,10 +6,16 @@ import json
 import httpx
 
 from app.config import (
-    TTS_API_URL, TTS_AUDIO_FORMAT, TTS_MAX_CHARS, TTS_RESOURCE_ID, TTS_SAMPLE_RATE, TTS_TIMEOUT,
-    TTS_USER_UID, TTS_VOICE_TYPE,
+    TTS_API_URL,
+    TTS_AUDIO_FORMAT,
+    TTS_MAX_CHARS,
+    TTS_RESOURCE_ID,
+    TTS_SAMPLE_RATE,
+    TTS_TIMEOUT,
+    TTS_USER_UID,
+    TTS_VOICE_TYPE,
+    cfg,
 )
-from app.config import cfg
 from app.errors import BusinessError
 
 # 官方约定：流式响应 code=0 携带 base64 音频分片，20000000 表示合成完成

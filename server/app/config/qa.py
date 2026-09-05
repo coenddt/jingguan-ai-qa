@@ -39,8 +39,8 @@ QA_CHART = {
     'amount_unit': '万元',
 }
 
-# 结论生成引用的结果行采样上限
-QA_CONCLUSION_ROWS = 20
+# 结论生成引用的结果行采样上限（降采样：prefill 输入变小，缩短结论 LLM 首 token 延迟）
+QA_CONCLUSION_ROWS = 10
 
 # 追问建议条数
 QA_FOLLOW_UPS = 3

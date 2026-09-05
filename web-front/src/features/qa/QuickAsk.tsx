@@ -1,27 +1,26 @@
-/** 快捷提问面板（原型 qq-panel 1:1，锚定输入栏上方）：常问 / 收藏 */
+/** 快捷提问面板（原型 qq-panel 1:1，锚定输入栏上方）：常问 / 收藏（发送走 AskContext） */
 
 import { useCallback, useEffect, useState } from 'react'
 import { qaApi } from '../../api/modules/qa'
 import { useSnackbar } from '../../hooks/useSnackbar'
 import { readFavorites, writeFavorites } from '../../services/favorites'
+import { useAsk } from './qaContext'
 
 interface Props {
-  open: boolean
   onClose: () => void
-  onAsk: (q: string) => void
 }
 
 type Tab = 'hot' | 'fav'
 
-export default function QuickAsk({ open, onClose, onAsk }: Props) {
+export default function QuickAsk({ onClose }: Props) {
   const [tab, setTab] = useState<Tab>('hot')
   const [hot, setHot] = useState<{ question: string; hit: number }[]>([])
   const [hotEnabled, setHotEnabled] = useState(true)
   const [favs, setFavs] = useState<string[]>([])
   const { showSnackbar } = useSnackbar()
+  const ask = useAsk()
 
   useEffect(() => {
-    if (!open) return
     setTab('hot')
     setFavs(readFavorites())
     qaApi.getQuickAsks()
@@ -31,18 +30,22 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
         if (!data.enabled) setTab('fav')
       })
       .catch(() => showSnackbar('常问数据加载失败', 'error'))
-  }, [open, showSnackbar])
+  }, [showSnackbar])
 
   // 点击面板外部关闭
   useEffect(() => {
-    if (!open) return
     const onDocClick = (e: MouseEvent) => {
       const t = e.target as HTMLElement
       if (!t.closest('.qq-panel') && !t.closest('.qq-btn')) onClose()
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
-  }, [open, onClose])
+  }, [onClose])
+
+  const pick = useCallback((q: string) => {
+    ask(q)
+    onClose()
+  }, [ask, onClose])
 
   const removeFav = useCallback((q: string) => {
     const next = favs.filter((f) => f !== q)
@@ -51,15 +54,13 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
     showSnackbar('已取消收藏', 'success')
   }, [favs, showSnackbar])
 
-  if (!open) return null
-
   const list = tab === 'hot' ? hot.map((h) => h.question) : favs
 
   return (
     <div className="qq-panel show">
       <div className="qq-phdr">
         <h4><i className="fas fa-bolt" style={{ color: '#2563EB', marginRight: 4 }} />快捷提问</h4>
-        <button className="qq-close" onClick={onClose}><i className="fas fa-times" /></button>
+        <button className="qq-close" aria-label="关闭快捷提问" onClick={onClose}><i className="fas fa-times" /></button>
       </div>
       <div className="qq-tabs">
         {hotEnabled && (
@@ -74,10 +75,10 @@ export default function QuickAsk({ open, onClose, onAsk }: Props) {
           </div>
         )}
         {list.map((q) => (
-          <div key={q} className="qq-item" onClick={() => onAsk(q)}>
+          <div key={q} className="qq-item" onClick={() => pick(q)}>
             <span>{q}</span>
             {tab === 'fav' && (
-              <button className="qq-unfav" title="取消收藏" onClick={(e) => { e.stopPropagation(); removeFav(q) }}>
+              <button className="qq-unfav" title="取消收藏" aria-label="取消收藏" onClick={(e) => { e.stopPropagation(); removeFav(q) }}>
                 <i className="fas fa-times" />
               </button>
             )}

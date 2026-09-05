@@ -25,8 +25,6 @@ Schema 管理 — 注册、解析、查询
     })
 """
 
-from .types import get_default
-
 # 已注册的 schema 映射
 _schemas = {}
 

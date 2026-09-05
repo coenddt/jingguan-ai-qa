@@ -15,10 +15,12 @@ const DURATION: Record<SnackbarSeverity, number> = {
   error: 5000,
 }
 
-export const SnackbarContext = createContext<{
+export interface SnackbarApi {
   showSnackbar: (message: string, severity?: SnackbarSeverity) => void
   hideSnackbar: () => void
-}>({ showSnackbar: () => undefined, hideSnackbar: () => undefined })
+}
+
+export const SnackbarContext = createContext<SnackbarApi | null>(null)
 
 export function useLocalSnackbar() {
   const [snackbar, setSnackbar] = useState<SnackbarState>({ open: false, message: '', severity: 'info' })
@@ -42,9 +44,11 @@ export function useLocalSnackbar() {
   return { snackbar, showSnackbar, hideSnackbar }
 }
 
-/** 公开 hook — Context 优先（全局单例），兜底局部 state */
+/** 公开 hook — Context 优先（全局单例），无 Provider 时兜底局部 state。
+ *  useLocalSnackbar 无条件调用（条件调用 hook 属违规）；原实现的默认值非 null 导致兜底分支永不可达 */
 export function useSnackbar() {
   const ctx = useContext(SnackbarContext)
+  const local = useLocalSnackbar()
   if (ctx) return { snackbar: null, showSnackbar: ctx.showSnackbar, hideSnackbar: ctx.hideSnackbar }
-  return useLocalSnackbar()
+  return local
 }

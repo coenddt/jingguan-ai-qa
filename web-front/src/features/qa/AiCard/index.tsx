@@ -1,10 +1,9 @@
 /** AI 回答结构化卡片（原型 qa-ai-card 1:1）：分析过程 → 数据发现 → 数据表格 → 数据统计 → 数据可视化 → 结论 → 页脚 → 追问
  *  流式：streaming 时按块到达顺序渲染，未到达的块显示生成中占位 */
 
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import type { QaAskResp } from '../../../types'
 import MarkdownView from '../../../components/MarkdownView'
-import ChartView from '../charts'
 import { useSnackbar } from '../../../hooks/useSnackbar'
 import { buildAiCardCopyText } from '../../../services/qa'
 import { copyToClipboard } from '../../../services/clipboard'
@@ -17,13 +16,18 @@ import AiFeedbackModal from './AiFeedbackModal'
 import TypewriterText from './TypewriterText'
 import { Module, BlkPending, BlkEmpty } from './qaBlocks'
 
+// ECharts 按需分包：仅当回复含图表时才加载图表 chunk
+const ChartView = lazy(() => import('../charts'))
+
 interface Props {
   resp: Partial<QaAskResp>
   question: string
   streaming?: boolean
+  /** 消息落库时间，透传至页脚展示（避免重渲染时显示时间漂移） */
+  createdAt?: string
 }
 
-export default function AiCard({ resp, question, streaming }: Props) {
+export default function AiCard({ resp, question, streaming, createdAt }: Props) {
   const [openSteps, setOpenSteps] = useState(!!streaming)
   const [copied, setCopied] = useState(false)
   const [fbOpen, setFbOpen] = useState(false)
@@ -94,7 +98,9 @@ export default function AiCard({ resp, question, streaming }: Props) {
             resp.chart && (
               <div className="qa-ai-chart">
                 <div className="chart-desc">{resp.chart.title}{resp.chart.unit ? `（单位：${resp.chart.unit}）` : ''}：</div>
-                <ChartView chart={resp.chart} />
+                <Suspense fallback={<div className="text-sm text-slate-400 py-2">图表加载中…</div>}>
+                  <ChartView chart={resp.chart} />
+                </Suspense>
               </div>
             )
           ) : <BlkPending />}
@@ -108,7 +114,7 @@ export default function AiCard({ resp, question, streaming }: Props) {
         {/* 页脚 + 追问 chips：完成后才渲染 */}
         {!streaming && resp.meta && (
           <>
-            <AiCardFooter resp={resp as QaAskResp} copied={copied} onCopy={handleCopy} onFeedback={openFeedback} />
+            <AiCardFooter resp={resp as QaAskResp} copied={copied} onCopy={handleCopy} onFeedback={openFeedback} createdAt={createdAt} />
             <AiFollowUps followUps={resp.follow_ups ?? []} />
             <AiFeedbackModal open={fbOpen} sessionId={resp.session_id ?? ''} question={question} answer={resp.text ?? ''}
               onClose={closeFeedback} />

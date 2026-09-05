@@ -9,17 +9,39 @@
 import json
 import re
 import time
+from urllib.parse import urlparse
 
 import httpx
 
 from app.agent.prompts import build_messages, scenario_params
 from app.config import LLM_TEMPERATURE, LLM_TIMEOUT, cfg
+from app.log import log
 from app.services import json_schema_shell
 
 PLATFORM_PRESETS = {
     'deepseek': {'name': 'DeepSeek', 'base_url': 'https://api.deepseek.com/v1'},
     'volcengine': {'name': '火山引擎方舟', 'base_url': 'https://ark.cn-beijing.volces.com/api/v3'},
 }
+
+# 平台层：reasoning 语义 → 各平台请求体翻译（新增/变更平台只改这里，场景层不感知）。
+# reasoning 取值范围见场景参数（当前仅 'disabled'：不需模型思考，纯可见输出）。
+_REASONING_PAYLOADS = {
+    'disabled': {'deepseek': {'type': 'disabled'}, 'volcengine': {'type': 'disabled'}},
+}
+
+
+def _resolve_reasoning(platform: str, flag: str | None) -> dict | None:
+    """把场景语义 flag 翻译成 platform 的请求体；无 flag 或平台未定义该姿势 → None（不注入）。
+
+    未知平台/未知语义不静默注入奇怪字段导致上抛 400，但也不该无声回头踏默认行为，
+    故落一条 warn 告警（堡垒思想：宁可误告警，不可漏告警）。
+    """
+    if not flag:
+        return None
+    payload = _REASONING_PAYLOADS.get(flag, {}).get(platform)
+    if payload is None:
+        log('warn', 'llm_reasoning_unmapped', flag=flag, platform=platform)
+    return payload
 
 # 共享连接池：复用一个 keep-alive 客户端，避免每次调用新建 TCP+TLS 连接
 # （预热/候选并发/结论每次调用都受益；httpx.AsyncClient 天然支持并发复用）
@@ -42,11 +64,18 @@ async def aclose() -> None:
 
 
 def resolve_base_url(platform: str, base_url: str | None = None) -> str:
-    """平台 baseUrl 解析：显式 baseUrl 优先，空则取平台预设；未知平台抛错（禁静默兜底）"""
+    """平台 baseUrl 解析：显式 baseUrl 优先，空则取平台预设；未知平台抛错（禁静默兜底）。
+    自定义 baseUrl 仅允许与平台预设同 host（防 SSRF 探测内网）。"""
     preset = PLATFORM_PRESETS.get(platform)
     if not preset:
         raise ValueError(f'不支持的大模型平台：{platform}')
-    return (base_url or preset['base_url']).rstrip('/')
+    if not base_url:
+        return preset['base_url'].rstrip('/')
+    preset_host = urlparse(preset['base_url']).netloc
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ('http', 'https') or parsed.netloc != preset_host:
+        raise ValueError(f'baseUrl 域名不合法：仅允许平台预设域名 {preset_host}')
+    return base_url.rstrip('/')
 
 
 async def chat(messages: list[dict], base_url: str | None = None,
@@ -88,7 +117,7 @@ async def chat(messages: list[dict], base_url: str | None = None,
 
 def extract_json(text: str) -> dict:
     """从 LLM 输出中提取 JSON（容忍 ```json 围栏）"""
-    m = re.search(r'```(?:json)?\s*(.*?)```', text, re.S)
+    m = re.search(r'```(?:json)?\s*(.*?)```', text, re.DOTALL)
     raw = m.group(1) if m else text
     start = raw.find('{')
     if start < 0:
@@ -111,7 +140,7 @@ async def invoke(scenario_id: str, variables: dict, model_conf: dict) -> tuple[d
         model=model_conf.get('modelName'),
         temperature=params['temperature'],
         max_tokens=params.get('max_tokens'),
-        thinking=params.get('thinking'),
+        thinking=_resolve_reasoning(model_conf['platform'], params.get('reasoning')),
     )
     if params['json']:
         return json_schema_shell.validate(extract_json(ret['content']), scenario_id), ret

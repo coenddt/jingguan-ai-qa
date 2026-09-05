@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PageFilters, PagedQuery } from '../types'
 
 interface Options<F> {
@@ -21,11 +21,15 @@ export function usePagedList<T, F extends PageFilters = PageFilters>(
   const [loading, setLoading] = useState(false)
   const [filters, setFilters] = useState<F>({} as F)
   const fetcherRef = useRef(fetcher)
-  fetcherRef.current = fetcher
   const optsRef = useRef(options)
-  optsRef.current = options
   const stateRef = useRef({ page, rowsPerPage, filters })
-  stateRef.current = { page, rowsPerPage, filters }
+  // 三个 ref 统一在 effect 中同步（渲染期写 ref 属 React 反模式）；初始值由 useRef 惰性承担，
+  // 动作仅从事件回调触发（此时 effect 已 flush），读到的恒为最新值
+  useEffect(() => {
+    fetcherRef.current = fetcher
+    optsRef.current = options
+    stateRef.current = { page, rowsPerPage, filters }
+  })
 
   const load = useCallback(async (p: number, size: number, f: F) => {
     setLoading(true)

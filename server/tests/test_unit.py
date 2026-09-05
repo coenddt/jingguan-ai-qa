@@ -53,8 +53,10 @@ def test_guard_reject_dangerous_op_deep_nested():
         {'unit': {'$gt': 0, '$or': [{'income': {'$ne': 1}}], '$not': {'year': 1}}},
     ]
     for cond in cases:
-        with pytest.raises(GuardError, msg=f'应拒绝: {cond}'):
+        # 注：pytest.raises 无 msg 参数（6.2+ 已移除），断言信息放 pytest.raises 外层
+        with pytest.raises(GuardError) as excinfo:
             verify({'model': 'CommercialLedger', 'condition': cond})
+        assert excinfo.value  # GuardError 已抛出即拦截成功
 
 
 def test_guard_ok_deep_nested_allowed():

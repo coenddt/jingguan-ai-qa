@@ -41,7 +41,10 @@ async def list_models():
 async def add_model(body: ModelIn):
     if body.platform not in llm_client.PLATFORM_PRESETS:
         raise BusinessError(f'不支持的大模型平台：{body.platform}', 400)
-    base_url = llm_client.resolve_base_url(body.platform, body.baseUrl)
+    try:
+        base_url = llm_client.resolve_base_url(body.platform, body.baseUrl)
+    except ValueError as e:
+        raise BusinessError(str(e), 400)
     name = body.modelName
     if await store.exists('AiModel', {'name': name}):
         host = urlparse(base_url).netloc or 'host'

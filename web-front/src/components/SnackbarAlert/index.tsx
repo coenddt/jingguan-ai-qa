@@ -26,7 +26,7 @@ export default function SnackbarAlert({ snackbar, onClose }: Props) {
       <div className={`alert ${alertClass} shadow-lg rounded-2xl px-5 py-3 font-bold flex items-center gap-2`}>
         {ICONS[snackbar.severity]}
         <span>{snackbar.message}</span>
-        <button className="btn btn-ghost btn-xs btn-square ml-2 whitespace-nowrap" onClick={onClose}>
+        <button className="btn btn-ghost btn-xs btn-square ml-2 whitespace-nowrap" aria-label="关闭提示" onClick={onClose}>
           <X size={14} />
         </button>
       </div>

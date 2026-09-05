@@ -1,12 +1,14 @@
 """回复校对：提交/列表/处理"""
 
+import re
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.db.mongo_store import store
 from app.errors import BusinessError
-from app.services.pagination import paged_query
 from app.services import qa_service
+from app.services.pagination import paged_query
 
 router = APIRouter(prefix='/api/feedback', tags=['feedback'])
 
@@ -40,9 +42,9 @@ async def list_feedback(page: int = 1, pageSize: int = 10,
                         search: str = '', userSearch: str = '', status: str = ''):
     cond: dict = {}
     if search:
-        cond['question'] = {'$regex': search}
+        cond['question'] = {'$regex': re.escape(search)}  # 用户输入转义：防灾难回溯
     if userSearch:
-        cond['userName'] = {'$regex': userSearch}
+        cond['userName'] = {'$regex': re.escape(userSearch)}
     if status:
         cond['status'] = status
     return await paged_query('Feedback', cond, page, pageSize,

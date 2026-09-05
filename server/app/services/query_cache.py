@@ -29,9 +29,11 @@ async def exact_hit(question: str) -> dict | None:
     )
     if not ex or not ex.get('template'):
         return None
-    await store.run_as_internal(
-        lambda: store.update('QueryExample', {'_id': ex['_id']}, {'$inc': {'hit': 1}})
-    )
+
+    async def _hit() -> None:  # 必须是协程函数：lambda 形态 fn() 只建协程不 await，hit 计数静默失效
+        await store.update('QueryExample', {'_id': ex['_id']}, {'$inc': {'hit': 1}})
+
+    await store.run_as_internal(_hit)
     return ex
 
 

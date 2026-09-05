@@ -12,14 +12,30 @@ import traceback
 from app.agent.prompts import scenario_params
 from app.agent.step_tracker import StepTracker
 from app.config import (
-    MAX_LIMIT, QA_CHART, QA_CONCLUSION_ROWS, QA_FOLLOW_UPS, QA_HOT_FUZZY_SCORE,
-    QA_NUMERIC_FIELDS, QA_PREHEAT_ENABLED, QA_QUERY_CANDIDATES,
-    QA_QUERY_CANDIDATE_CONCURRENCY, QA_SOURCES, QA_TIER, QA_TIME_DIMS, QA_TITLE_MAX,
+    MAX_LIMIT,
+    QA_CHART,
+    QA_CONCLUSION_ROWS,
+    QA_FOLLOW_UPS,
+    QA_HOT_FUZZY_SCORE,
+    QA_NUMERIC_FIELDS,
+    QA_PREHEAT_ENABLED,
+    QA_QUERY_CANDIDATE_CONCURRENCY,
+    QA_QUERY_CANDIDATES,
+    QA_SOURCES,
+    QA_TIER,
+    QA_TIME_DIMS,
+    QA_TITLE_MAX,
 )
 from app.db.mongo_store import store
 from app.errors import BusinessError
 from app.log import get_request_id, log
-from app.services import auto_feedback, llm_client, query_cache, query_candidate, query_executor
+from app.services import (
+    auto_feedback,
+    llm_client,
+    query_cache,
+    query_candidate,
+    query_executor,
+)
 from app.services.json_schema_shell import ShellError
 from app.services.query_guard import GuardError, measure_key, verify
 

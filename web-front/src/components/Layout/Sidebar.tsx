@@ -80,7 +80,7 @@ export default function Sidebar() {
         })}
       </div>
       <div className="sidebar-footer">
-        <button className="sidebar-toggle" title="收起/展开侧边栏" onClick={() => setCollapsed((v) => !v)}>
+        <button className="sidebar-toggle" title="收起/展开侧边栏" aria-label="收起/展开侧边栏" onClick={() => setCollapsed((v) => !v)}>
           <i className="fas fa-chevron-left" />
         </button>
       </div>

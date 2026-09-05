@@ -53,6 +53,8 @@ _store_map = {
     'getContext': permission.get_context,
     'set_context': permission.set_context,
     'get_context': permission.get_context,
+    'scopedRoles': permission.scoped_roles,
+    'scoped_roles': permission.scoped_roles,
     'runAsInternal': permission.run_as_internal,
     'run_as_internal': permission.run_as_internal,
     'PermissionError': permission.PermissionError,

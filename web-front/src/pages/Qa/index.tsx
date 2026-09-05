@@ -13,6 +13,7 @@ import MessageList from '../../features/qa/MessageList'
 import InputBar from '../../features/qa/InputBar'
 import SourcePicker from '../../features/qa/SourcePicker'
 import QaLogView, { QaDetailModal } from '../../features/qa/QaLogView'
+import { AskProvider } from '../../features/qa/qaContext'
 import QaTopBar from './QaTopBar'
 
 const SOURCES_KEY = 'jg_sources'
@@ -32,6 +33,7 @@ export default function Qa() {
   const [view, setView] = useState<'chat' | 'log'>('chat')
   const [detail, setDetail] = useState<SessionItem | null>(null)
   const [selectedSources, setSelectedSources] = useState<string[]>(loadSelectedSources)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const { showSnackbar } = useSnackbar()
   const { messages, sending, activeId, send, loadMessages } = useQaChat(selectedSources)
 
@@ -106,18 +108,18 @@ export default function Qa() {
         )}
 
         {view === 'chat' ? (
-          <>
-            <div className="flex-1 overflow-y-auto min-h-0">
+          <AskProvider value={send}>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0">
               {messages.length === 0 && !sending ? (
-                <Welcome onAsk={send} />
+                <Welcome />
               ) : (
                 <div className="px-5 pt-5 pb-2">
-                  <MessageList messages={messages} sending={sending} onResend={send} />
+                  <MessageList messages={messages} sending={sending} scrollRef={scrollRef} />
                 </div>
               )}
             </div>
-            <InputBar sending={sending} sttEnabled={sttEnabled} onSend={send} />
-          </>
+            <InputBar sending={sending} sttEnabled={sttEnabled} />
+          </AskProvider>
         ) : (
           <QaLogView onBack={backToChat} onOpenSession={openSession} />
         )}

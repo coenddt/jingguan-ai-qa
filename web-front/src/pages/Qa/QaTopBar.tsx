@@ -15,7 +15,7 @@ export default function QaTopBar({ title, listOpen, onOpenList, sourceLabel, onN
     <div className="qa-right-hdr">
       <div className="qa-rh-left">
         {!listOpen && (
-          <button className="qa-rh-btn" title="侧边栏" onClick={onOpenList}>
+          <button className="qa-rh-btn" title="侧边栏" aria-label="展开侧边栏" onClick={onOpenList}>
             <i className="fas fa-outdent" />
           </button>
         )}

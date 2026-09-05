@@ -1,10 +1,9 @@
 /** 问数聊天流：messages/activeId/sending + loadMessages/send（SSE 流式：步骤/结果块逐个 patch） */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { qaApi } from '../api/modules/qa'
 import type { QaStreamEvent } from '../api/modules/qa'
 import { useSessionStore } from '../store/useSessionStore'
-import { onQaAsk } from '../services/qa'
 import { getApiErrorMsg } from '../utils/error'
 import { writeJsonLS } from '../utils/localStorage'
 import { useSnackbar } from './useSnackbar'
@@ -17,11 +16,18 @@ export function useQaChat(selectedSources: string[]) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MsgItem[]>([])
   const [sending, setSending] = useState(false)
+  /** 进行中流的终止器：切会话/组件卸载时中止，避免 sending 卡死与无效流消费 */
+  const abortRef = useRef<AbortController | null>(null)
   const fetchSessions = useSessionStore((s) => s.fetchMethod)
   const { showSnackbar } = useSnackbar()
 
+  // 卸载时中止进行中的问数流
+  useEffect(() => () => { abortRef.current?.abort() }, [])
+
   /** 切换会话 / 开新会话（id 为空即新会话） */
   const loadMessages = useCallback(async (id: string | null) => {
+    abortRef.current?.abort()
+    abortRef.current = null
     setActiveId(id || null)
     writeJsonLS(LAST_SESSION_KEY, id)
     if (!id) {
@@ -80,8 +86,11 @@ export function useQaChat(selectedSources: string[]) {
       }
     }
 
+    const ac = new AbortController()
+    abortRef.current = ac
+
     try {
-      await qaApi.ask({ question, session_id: activeId, source_keys: selectedSources }, onEvent)
+      await qaApi.ask({ question, session_id: activeId, source_keys: selectedSources }, onEvent, ac.signal)
       setMessages((prev) => prev.map((m) => {
         if (m.id !== aiId) return m
         const full = (m.aiMeta ?? {}) as QaAskResp
@@ -89,16 +98,16 @@ export function useQaChat(selectedSources: string[]) {
       }))
       fetchSessions().catch(() => undefined)
     } catch (e) {
+      // 主动中止（切会话/卸载）：不提示、不动占位（切会话时 messages 随即被历史覆盖）
+      if (e instanceof DOMException && e.name === 'AbortError') return
       // 失败：移除占位卡片，保留用户消息并提示
       setMessages((prev) => prev.filter((m) => m.id !== aiId))
       showSnackbar(getApiErrorMsg(e) || '问数请求失败，请稍后重试', 'error')
     } finally {
+      if (abortRef.current === ac) abortRef.current = null
       setSending(false)
     }
   }, [activeId, fetchSessions, selectedSources, sending, showSnackbar])
-
-  // 追问 chips / 快捷提问统一入口（全局事件）
-  useEffect(() => onQaAsk((q) => { void send(q) }), [send])
 
   return { messages, sending, activeId, send, loadMessages }
 }

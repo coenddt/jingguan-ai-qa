@@ -1,9 +1,11 @@
 /** 新会话欢迎页（原型 qa-welcome 1:1）：你好 / 我是经管之星·AI问数助手 / 开场白 / 你可以这么问我 */
 
 import { useConfigStore } from '../../store/useConfigStore'
+import { useAsk } from './qaContext'
 
-export default function Welcome({ onAsk }: { onAsk: (q: string) => void }) {
+export default function Welcome() {
   const greeting = useConfigStore((s) => s.config.greeting)
+  const ask = useAsk()
 
   // 原型 qa-quick-row：每行最多两个按钮
   const rows: string[][] = []
@@ -28,7 +30,7 @@ export default function Welcome({ onAsk }: { onAsk: (q: string) => void }) {
                   {rows.map((row, i) => (
                     <div key={i} className="qa-quick-row">
                       {row.map((q) => (
-                        <div key={q} className="qa-quick-btn" onClick={() => onAsk(q)}>{q}</div>
+                        <div key={q} className="qa-quick-btn" onClick={() => ask(q)}>{q}</div>
                       ))}
                     </div>
                   ))}

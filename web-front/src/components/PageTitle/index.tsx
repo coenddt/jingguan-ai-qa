@@ -28,7 +28,7 @@ export default function PageTitle({ title, subtitle, onRefresh, onBack, actions 
             <h2 className="text-2xl font-black tracking-tight text-primary">{title}</h2>
             {!!onRefresh && (
               <div className="tooltip" data-tip="刷新">
-                <button onClick={onRefresh}
+                <button onClick={onRefresh} aria-label="刷新"
                   className="btn btn-ghost btn-xs btn-square bg-black/[0.03] hover:bg-primary hover:text-white">
                   <RotateCcw size={16} />
                 </button>
@@ -39,7 +39,7 @@ export default function PageTitle({ title, subtitle, onRefresh, onBack, actions 
         </div>
         <div className="flex gap-2 items-center">
           {!!onBack && (
-            <button onClick={() => (typeof onBack === 'function' ? onBack() : navigate(-1))}
+            <button onClick={() => (typeof onBack === 'function' ? onBack() : navigate(-1))} aria-label="返回"
               className="btn btn-ghost btn-sm btn-square rounded-xl hover:bg-primary hover:text-white">
               <ArrowLeft size={18} />
             </button>

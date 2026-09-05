@@ -16,7 +16,6 @@ from app.agent.prompts import build_messages
 from app.services import llm_client
 from app.services.query_guard import GuardError, verify
 
-
 # 预热输出上限：极短回复即可把 query_gen 的 system 前缀写入供应商缓存，少烧 token
 _PREHEAT_MAX_TOKENS = 8
 

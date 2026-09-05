@@ -1,4 +1,4 @@
-/** 会话操作流：菜单/置顶/重命名/删除（SessionList 使用） */
+/** 会话操作流：置顶/重命名/删除（SessionList 使用；悬停菜单开合状态由 SessionList 自持） */
 
 import { useCallback, useState } from 'react'
 import type { SessionItem } from '../types'
@@ -7,7 +7,6 @@ import { useSessionStore } from '../store/useSessionStore'
 import { useSnackbar } from './useSnackbar'
 
 export function useSessionActions(activeId: string | null, onActiveDeleted?: (id: string) => void) {
-  const [menuFor, setMenuFor] = useState<string | null>(null)
   const [renameFor, setRenameFor] = useState<SessionItem | null>(null)
   const [renameText, setRenameText] = useState('')
   const [delFor, setDelFor] = useState<SessionItem | null>(null)
@@ -15,10 +14,7 @@ export function useSessionActions(activeId: string | null, onActiveDeleted?: (id
   const fetchSessions = useSessionStore((s) => s.fetchMethod)
   const { showSnackbar } = useSnackbar()
 
-  const toggleMenu = useCallback((id: string) => setMenuFor((p) => (p === id ? null : id)), [])
-
   const togglePin = useCallback(async (s: SessionItem) => {
-    setMenuFor(null)
     try {
       await qaApi.patchSession(s.id, { pinned: !s.pinned })
       await fetchSessions()
@@ -28,7 +24,6 @@ export function useSessionActions(activeId: string | null, onActiveDeleted?: (id
   }, [fetchSessions, showSnackbar])
 
   const openRename = useCallback((s: SessionItem) => {
-    setMenuFor(null)
     setRenameFor(s)
     setRenameText(s.title)
   }, [])
@@ -46,10 +41,7 @@ export function useSessionActions(activeId: string | null, onActiveDeleted?: (id
     }
   }, [renameFor, renameText, fetchSessions, showSnackbar])
 
-  const openDelete = useCallback((s: SessionItem) => {
-    setMenuFor(null)
-    setDelFor(s)
-  }, [])
+  const openDelete = useCallback((s: SessionItem) => setDelFor(s), [])
   const closeDelete = useCallback(() => setDelFor(null), [])
 
   const submitDelete = useCallback(async () => {
@@ -69,7 +61,6 @@ export function useSessionActions(activeId: string | null, onActiveDeleted?: (id
   }, [delFor, activeId, fetchSessions, showSnackbar, onActiveDeleted])
 
   return {
-    menuFor, toggleMenu,
     renameFor, openRename, closeRename, renameText, changeRenameText, submitRename,
     delFor, openDelete, closeDelete, delLoading, submitDelete,
     togglePin,

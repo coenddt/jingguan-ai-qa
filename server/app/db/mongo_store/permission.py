@@ -14,6 +14,7 @@
 """
 
 import contextvars
+from contextlib import contextmanager
 
 _ctx: contextvars.ContextVar = contextvars.ContextVar('mongo_store_ctx', default=None)
 
@@ -198,6 +199,21 @@ def filter_writable_data(schema, ctx, data):
 
 
 # ─── 内部上下文执行 ──────────────────────────────────────────
+
+
+@contextmanager
+def scoped_roles(roles):
+    """以指定角色进入临时权限上下文（token-set/reset，嵌套安全），退出自动恢复原上下文。
+
+    与 run_as_internal 同构，供 AI 查询执行等显式角色注入场景使用，
+    取代 set_context + finally set_context(None) 的清空式写法（后者嵌套时会误清外层上下文，
+    且"无上下文=权限全放行"，清空即静默失守方向）。
+    """
+    token = _ctx.set({**(get_context() or {}), 'roles': roles})
+    try:
+        yield
+    finally:
+        _ctx.reset(token)
 
 
 async def run_as_internal(fn):

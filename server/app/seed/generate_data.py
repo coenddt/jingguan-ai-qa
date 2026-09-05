@@ -5,8 +5,14 @@ import random
 from app.config import APP_CONFIG_DEFAULTS, cfg
 from app.db.mongo_store import store
 from app.seed.dim_defs import (
-    INDUSTRIES, INCOME_SUBS, PRODUCT_LINES, PRODUCT_MODELS, RISK_LEVELS,
-    STAGES, UNITS, YEARS,
+    INCOME_SUBS,
+    INDUSTRIES,
+    PRODUCT_LINES,
+    PRODUCT_MODELS,
+    RISK_LEVELS,
+    STAGES,
+    UNITS,
+    YEARS,
 )
 
 _CUSTOMERS = ['华信集团', '中科曙光', '国泰银行', '南方电网', '交通投资集团', '第一医院',

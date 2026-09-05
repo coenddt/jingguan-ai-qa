@@ -1,13 +1,20 @@
 """问数域路由：会话/消息/提问/日志/数据源/常问"""
 
 import json
+import re
 import time
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.config import APP_CONFIG_DEFAULTS, QA_HOT_LIMIT, QA_PRESET_HOT, QA_SOURCES, QA_TITLE_MAX
+from app.config import (
+    APP_CONFIG_DEFAULTS,
+    QA_HOT_LIMIT,
+    QA_PRESET_HOT,
+    QA_SOURCES,
+    QA_TITLE_MAX,
+)
 from app.db.mongo_store import store
 from app.errors import BusinessError
 from app.services import qa_service
@@ -17,7 +24,7 @@ router = APIRouter(prefix='/api/qa', tags=['qa'])
 
 
 class AskIn(BaseModel):
-    question: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=2000)
     session_id: str | None = None
     source_keys: list[str] = []
 
@@ -134,10 +141,10 @@ async def qa_log(page: int = 1, pageSize: int = 20, days: int = 30,
     since = (time.time() - days * 86400) * 1000
     cond: dict = {'role': 'user', 'createdAt': {'$gte': since}}
     if kw:
-        cond['content'] = {'$regex': kw}
+        cond['content'] = {'$regex': re.escape(kw)}  # 用户输入转义：仅字面量子串匹配，防灾难回溯
     if userName:
         matched = await store.query('QaSession($condition:@c0) { _id }',
-                                    {'c0': {'userName': {'$regex': userName}}})
+                                    {'c0': {'userName': {'$regex': re.escape(userName)}}})
         ids = [s['_id'] for s in matched]
         if not ids:
             return {'items': [], 'total': 0}

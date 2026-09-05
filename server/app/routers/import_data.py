@@ -1,12 +1,10 @@
 """台账导入：模板下载（列定义与解析共用常量）+ xlsx 上传覆盖 + 导入记录"""
 
 import io
-import time
 
 from fastapi import APIRouter, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook, load_workbook
-from pydantic import BaseModel
 
 from app.db.mongo_store import store
 from app.errors import BusinessError
@@ -25,6 +23,8 @@ _SAMPLE_ROW = {
     'goal': [2026, '北京代表处', 5000, 1800],
 }
 _TYPES = set(TEMPLATE_COLUMNS)
+
+MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2MB：台账模板数据量远小于此，防内存放大/zip 炸弹
 
 
 class _SkipRow(Exception):
@@ -53,9 +53,14 @@ async def template(type: str = 'commercial'):
 async def upload(type: str, year: int, file: UploadFile):
     if type not in _TYPES:
         raise BusinessError('type 参数不合法', 400)
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        await _log(type, year, file.filename, 0, 0, '失败-文件超限',
+                   f'文件 {len(content)} 字节超上限 {MAX_UPLOAD_BYTES}')
+        raise BusinessError('文件过大（上限 2MB）', 400)
     cols = TEMPLATE_COLUMNS[type]
     try:
-        wb = load_workbook(io.BytesIO(await file.read()), read_only=True)
+        wb = load_workbook(io.BytesIO(content), read_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
     except Exception:
@@ -81,10 +86,6 @@ async def upload(type: str, year: int, file: UploadFile):
     await _log(type, year, file.filename or '', len(rows) - 1, len(docs), status, '; '.join(errors[:5]))
     return {'ok': status != '失败-格式不符', 'status': status, 'total': max(0, len(rows) - 1),
             'success': len(docs), 'errors': errors[:10]}
-
-
-class ImportLogIn(BaseModel):
-    pass
 
 
 def type_collection(t: str) -> str:

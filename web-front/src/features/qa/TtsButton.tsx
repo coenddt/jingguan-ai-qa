@@ -6,7 +6,7 @@ export default function TtsButton({ text }: { text: string }) {
   const { loading, playing, toggle } = useTts(text)
 
   return (
-    <button data-title="语音播放" disabled={loading} onClick={toggle}>
+    <button data-title="语音播放" aria-label="语音播放" disabled={loading} onClick={toggle}>
       <i className={`fas ${playing ? 'fa-stop' : 'fa-volume-up'}`} />
     </button>
   )

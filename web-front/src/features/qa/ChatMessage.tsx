@@ -4,18 +4,15 @@ import { useCallback, useState } from 'react'
 import { useSnackbar } from '../../hooks/useSnackbar'
 import { readFavorites, writeFavorites } from '../../services/favorites'
 import { copyToClipboard } from '../../services/clipboard'
+import { useAsk } from './qaContext'
 import ChatEditBox from './ChatEditBox'
 
-interface Props {
-  content: string
-  onResend: (text: string) => void
-}
-
-export default function ChatMessage({ content, onResend }: Props) {
+export default function ChatMessage({ content }: { content: string }) {
   const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
   const [faved, setFaved] = useState(() => readFavorites().includes(content))
   const { showSnackbar } = useSnackbar()
+  const ask = useAsk()
 
   const handleCopy = useCallback(() => {
     copyToClipboard(content)
@@ -38,9 +35,9 @@ export default function ChatMessage({ content, onResend }: Props) {
   const cancelEdit = useCallback(() => setEditing(false), [])
   const sendDraft = useCallback((draft: string) => {
     setEditing(false)
-    onResend(draft)
-  }, [onResend])
-  const resend = useCallback(() => onResend(content), [content, onResend])
+    ask(draft)
+  }, [ask])
+  const resend = useCallback(() => ask(content), [ask, content])
 
   if (editing) {
     return <ChatEditBox content={content} onCancel={cancelEdit} onSend={sendDraft} />
@@ -50,16 +47,16 @@ export default function ChatMessage({ content, onResend }: Props) {
     <div className="qa-user-msg">
       <div className="qa-user-bubble">{content}</div>
       <div className="qa-user-actions">
-        <button data-title="收藏" onClick={toggleFav}>
+        <button data-title="收藏" aria-label="收藏消息" onClick={toggleFav}>
           <i className="fas fa-star" style={faved ? { color: '#F59E0B' } : undefined} />
         </button>
-        <button data-title="编辑" onClick={startEdit}>
+        <button data-title="编辑" aria-label="编辑消息" onClick={startEdit}>
           <i className="fas fa-pen" />
         </button>
-        <button data-title="重新发送" onClick={resend}>
+        <button data-title="重新发送" aria-label="重新发送消息" onClick={resend}>
           <i className="fas fa-sync-alt" />
         </button>
-        <button data-title="复制" onClick={handleCopy}>
+        <button data-title="复制" aria-label="复制消息" onClick={handleCopy}>
           <i className={copied ? 'fas fa-check' : 'fas fa-copy'} style={copied ? { color: '#16A34A' } : undefined} />
         </button>
       </div>

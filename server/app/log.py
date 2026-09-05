@@ -8,6 +8,7 @@
 """
 
 import logging
+import re
 import sys
 import time
 import uuid
@@ -18,6 +19,9 @@ from starlette.requests import Request
 
 _request_id: ContextVar[str] = ContextVar('request_id', default='-')
 _configured = False
+
+# 外部 X-Request-Id 白名单：仅字母数字下划线连字符、≤32 位，防非法字符反射回写
+_RID_RE = re.compile(r'^[A-Za-z0-9_-]{1,32}$')
 
 FORMAT = '%(asctime)s %(levelname)s req=%(request_id)s %(message)s'
 
@@ -65,7 +69,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """注入 requestId + 记录请求开始/结束耗时"""
 
     async def dispatch(self, request: Request, call_next):
-        rid = request.headers.get('X-Request-Id') or uuid.uuid4().hex[:12]
+        raw_rid = request.headers.get('X-Request-Id')
+        rid = raw_rid if raw_rid and _RID_RE.match(raw_rid) else uuid.uuid4().hex[:12]
         bind_request_id(rid)
         t0 = time.monotonic()
         log('info', 'request_start', method=request.method, path=request.url.path)

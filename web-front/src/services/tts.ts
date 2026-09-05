@@ -6,5 +6,8 @@ import { ttsApi } from '../api/modules/tts'
 export async function synthesizeAudio(text: string): Promise<HTMLAudioElement> {
   const { data } = await ttsApi.synthesize(text)
   const url = URL.createObjectURL(data)
-  return new Audio(url)
+  const audio = new Audio(url)
+  // 播放结束即释放 blob URL（addEventListener 不与调用方 onended 赋值互相覆盖）
+  audio.addEventListener('ended', () => URL.revokeObjectURL(url))
+  return audio
 }

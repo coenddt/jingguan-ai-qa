@@ -1,5 +1,7 @@
 /** Zustand 列表 store 工厂：items/loaded/loading + 防重锁（store-init-pattern Variant A），
- *  useSessionStore / useModelStore 同构模板收敛于此 */
+ *  useSessionStore / useModelStore 同构模板收敛于此
+ *  防重语义：仅防重锁（if(get().loading) return），不防重取——列表需在操作（置顶/重命名/删除）
+ *  后调用 fetchMethod 强制刷新（见 useSessionActions）。区别于 useConfigStore 的单对象防重取。 */
 
 import { create } from 'zustand'
 

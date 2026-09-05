@@ -105,11 +105,12 @@ export default function AppConfig() {
                 <span className="app-card-name">{c.name}</span>
                 <div className="app-card-actions">
                   {c.gear && (
-                    <button className="app-card-set" title={c.gear.title} onClick={() => onGear(c.gear!.action)}>
+                    <button className="app-card-set" title={c.gear.title} aria-label={c.gear.title} onClick={() => onGear(c.gear!.action)}>
                       <i className="fas fa-cog" />
                     </button>
                   )}
-                  <button type="button" className={`app-toggle ${checkedMap[c.key] ? 'on' : ''}`}
+                  <button type="button" role="switch" aria-checked={checkedMap[c.key]} aria-label={`${c.name}开关`}
+                    className={`app-toggle ${checkedMap[c.key] ? 'on' : ''}`}
                     onClick={() => toggleCard(c.key, !checkedMap[c.key])} />
                 </div>
               </div>
@@ -119,8 +120,9 @@ export default function AppConfig() {
         </div>
       </div>
 
-      <GreetingModal open={greetingOpen} onClose={() => setGreetingOpen(false)} save={save} />
-      <HotModal open={hotOpen} onClose={() => setHotOpen(false)} save={save} />
+      {/* 条件渲染：每次打开均 remount，表单从当前配置重新初始化（关闭即丢弃未保存编辑，两弹窗语义一致） */}
+      {greetingOpen && <GreetingModal open onClose={() => setGreetingOpen(false)} save={save} />}
+      {hotOpen && <HotModal open onClose={() => setHotOpen(false)} save={save} />}
     </div>
   )
 }
@@ -165,7 +167,7 @@ function GreetingModal({ open, onClose, save }: { open: boolean; onClose: () => 
         {questions.map((q, i) => (
           <div key={`${q}-${i}`} className="gq-row">
             <input className="gq-input" value={q} readOnly placeholder="请输入快捷问题" maxLength={100} />
-            <button className="gq-del" onClick={() => removeQuestion(i)}><i className="fas fa-times" /></button>
+            <button className="gq-del" aria-label="删除开场问题" onClick={() => removeQuestion(i)}><i className="fas fa-times" /></button>
           </div>
         ))}
         {canAddQuestion && (
@@ -180,14 +182,10 @@ function GreetingModal({ open, onClose, save }: { open: boolean; onClose: () => 
   )
 }
 
-/** 常问设置弹窗（原型 hotConfigModal 1:1） */
+/** 常问设置弹窗（原型 hotConfigModal 1:1；父级条件渲染保证每次打开重置） */
 function HotModal({ open, onClose, save }: { open: boolean; onClose: () => void; save: SaveConfigFn }) {
   const hotRecommend = useConfigStore((s) => s.config.hotRecommend)
   const [threshold, setThreshold] = useState(hotRecommend.threshold)
-
-  useEffect(() => {
-    if (open) setThreshold(hotRecommend.threshold)
-  }, [open, hotRecommend])
 
   const changeThreshold = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setThreshold(Math.max(1, Number(e.target.value) || 1))

@@ -36,12 +36,13 @@ async function readSse(res: Response, onEvent: AskStreamHandler): Promise<void> 
 }
 
 async function askStream(body: { question: string; session_id?: string | null; source_keys: string[] },
-  onEvent: AskStreamHandler): Promise<void> {
+  onEvent: AskStreamHandler, signal?: AbortSignal): Promise<void> {
   const res = await fetch('/api/qa/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify(body),
+    signal,
   })
   if (res.status === 401) {
     window.dispatchEvent(new CustomEvent('auth:expired'))

@@ -24,6 +24,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   loaded: false,
   loading: false,
   fetchMethod: async () => {
+    // 单对象一次性拉取：防重锁 + 防重取（区别于 createListStore 的"仅防重锁、可强制刷新"列表语义）
     if (get().loading || get().loaded) return
     set({ loading: true })
     try {

@@ -1,14 +1,14 @@
-/** 问数输入栏（原型 1:1）：表情/快捷提问/文本域/语音/发送 */
+/** 问数输入栏（原型 1:1）：表情/快捷提问/文本域/语音/发送（发送统一走 AskContext） */
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useSnackbar } from '../../hooks/useSnackbar'
+import { useAsk } from './qaContext'
 import EmojiPickerPanel from './EmojiPickerPanel'
 import QuickAsk from './QuickAsk'
 
 interface Props {
   sending: boolean
   sttEnabled: boolean
-  onSend: (text: string) => void
 }
 
 /** 浏览器语音识别实例最小类型（DOM lib 未收录 SpeechRecognition） */
@@ -64,21 +64,22 @@ function useVoiceInput(sttEnabled: boolean) {
   return { listening, start }
 }
 
-export default function InputBar({ sending, sttEnabled, onSend }: Props) {
+export default function InputBar({ sending, sttEnabled }: Props) {
   const [text, setText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [quickOpen, setQuickOpen] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { listening, start } = useVoiceInput(sttEnabled)
   const { showSnackbar } = useSnackbar()
+  const ask = useAsk()
 
   const send = useCallback(() => {
     const t = text.trim()
     if (!t || sending) return
-    onSend(t)
+    ask(t)
     setText('')
     inputRef.current?.focus()
-  }, [text, sending, onSend])
+  }, [text, sending, ask])
 
   const onKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -114,7 +115,7 @@ export default function InputBar({ sending, sttEnabled, onSend }: Props) {
     <div className="qa-input-bar">
       <div className="qa-input-wrap">
         {/* 最前面：表情图标（展开选择常用 emoji） */}
-        <button className="qa-emoji-btn" title="表情"
+        <button className="qa-emoji-btn" title="表情" aria-label="插入表情"
           style={emojiOpen ? { background: '#F3F4F6', color: '#3B82F6' } : undefined}
           onClick={() => { setEmojiOpen((v) => !v); setQuickOpen(false) }}>
           <i className={emojiOpen ? 'fas fa-face-smile' : 'far fa-face-smile'} />
@@ -122,7 +123,7 @@ export default function InputBar({ sending, sttEnabled, onSend }: Props) {
         <EmojiPickerPanel open={emojiOpen} onPick={pickEmoji} onClose={() => setEmojiOpen(false)} />
 
         {/* 快捷提问 */}
-        <button className="qq-btn" title="快捷提问"
+        <button className="qq-btn" title="快捷提问" aria-label="快捷提问"
           onClick={() => { setQuickOpen((v) => !v); setEmojiOpen(false) }}>
           <i className="fas fa-bolt" />
         </button>
@@ -130,18 +131,18 @@ export default function InputBar({ sending, sttEnabled, onSend }: Props) {
         <textarea ref={inputRef} rows={1} placeholder="请写下您的想法…" value={text}
           onChange={(e) => setText(e.target.value)} onKeyDown={onKeyDown} disabled={sending} />
 
-        <button className="qa-mic-btn" title="语音输入" disabled={!sttEnabled || sending} onClick={voiceInput}>
+        <button className="qa-mic-btn" title="语音输入" aria-label="语音输入" disabled={!sttEnabled || sending} onClick={voiceInput}>
           <i className={listening ? 'fas fa-circle' : 'fas fa-microphone'}
             style={listening ? { color: '#F59E0B' } : undefined} />
         </button>
 
-        <button className={`qa-send-btn ${text.trim() ? '' : 'op'}`} title="发送"
+        <button className={`qa-send-btn ${text.trim() ? '' : 'op'}`} title="发送" aria-label="发送"
           disabled={!text.trim() || sending} onClick={send}>
           <i className={sending ? 'fas fa-spinner fa-spin' : 'fas fa-arrow-right'} />
         </button>
 
         {quickOpen && (
-          <QuickAsk open onAsk={(q) => { setQuickOpen(false); onSend(q) }} onClose={() => setQuickOpen(false)} />
+          <QuickAsk onClose={() => setQuickOpen(false)} />
         )}
       </div>
     </div>

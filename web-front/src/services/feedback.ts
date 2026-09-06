@@ -7,7 +7,6 @@ export async function fetchFeedbackPage({ page, pageSize, filters }: PagedQuery)
   const { data } = await feedbackApi.list({
     page: page + 1, pageSize,
     search: filters.search || undefined,
-    userSearch: filters.userSearch || undefined,
     status: filters.status || undefined,
   })
   return data

@@ -19,7 +19,6 @@ export default function Feedback() {
     { onError: showSnackbar, errorMessage: '反馈列表加载失败' },
   )
   const [kw, setKw] = useState('')
-  const [userKw, setUserKw] = useState('')
   const [status, setStatus] = useState('')
   const [detail, setDetail] = useState<FeedbackItem | null>(null)
 
@@ -30,18 +29,13 @@ export default function Feedback() {
   // 原型 oninput/onchange：输入即触发查询
   const changeKw = useCallback((v: string) => {
     setKw(v)
-    void search({ search: v, userSearch: userKw, status })
-  }, [search, userKw, status])
-
-  const changeUserKw = useCallback((v: string) => {
-    setUserKw(v)
-    void search({ search: kw, userSearch: v, status })
-  }, [search, kw, status])
+    void search({ search: v, status })
+  }, [search, status])
 
   const changeStatus = useCallback((v: string) => {
     setStatus(v)
-    void search({ search: kw, userSearch: userKw, status: v })
-  }, [search, kw, userKw])
+    void search({ search: kw, status: v })
+  }, [search, kw])
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -60,11 +54,6 @@ export default function Feedback() {
                 <i className="fas fa-search" />
                 <input type="text" placeholder="搜索问题..." value={kw}
                   onChange={(e) => changeKw(e.target.value)} />
-              </div>
-              <div className="pg-search" style={{ maxWidth: 140 }}>
-                <i className="fas fa-user" />
-                <input type="text" placeholder="搜索用户..." value={userKw}
-                  onChange={(e) => changeUserKw(e.target.value)} />
               </div>
               <select value={status} onChange={(e) => changeStatus(e.target.value)}
                 style={{ height: 32, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 4, fontSize: 14, outline: 'none', background: '#fff', color: 'var(--text-body)' }}>

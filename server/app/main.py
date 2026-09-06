@@ -14,6 +14,7 @@ from app.db.mongo_store import store
 from app.errors import BusinessError
 from app.log import RequestIdMiddleware, configure_logging
 from app.models.registry import register_all
+from app.routers import asr_ws as asr_ws_router
 from app.routers import config as config_router
 from app.routers import feedback as feedback_router
 from app.routers import import_data as import_router
@@ -75,4 +76,7 @@ _protected.include_router(import_router.router)
 _protected.include_router(tts_router.router)
 
 app.include_router(auth_router)  # login/check/logout 放行（nginx auth_request 依赖 check）
+# WS 与普通 HTTP 依赖体系统不兼容（require_login 依赖 Request/HTTPException 会引起握手 500），
+# 故 asr WS 路由不挂 _protected 组，改为在 handler 内自行校验登录 Cookie（verify_token → close(4401)）。
+app.include_router(asr_ws_router.router)
 app.include_router(_protected)

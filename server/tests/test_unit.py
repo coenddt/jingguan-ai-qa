@@ -1,6 +1,7 @@
 """单元测试（纯逻辑，无 DB）：守卫/认证/缓存归一化/pipeline 组装/prompt——部署后 pytest 运行"""
 
 import asyncio
+import json
 import pytest
 
 from app.agent.prompts import build_messages
@@ -17,6 +18,8 @@ from app.services.json_schema_shell import ShellError, attach_schema, validate
 from app.services.query_guard import GuardError, verify
 from app.db.mongo_store import store
 from app.services import llm_client
+from app.services.asr_protocol import ParsedFrame
+from app.services import asr_protocol as P
 from app.services import query_cache, query_candidate, query_executor, query_guard
 from app.services.llm_client import chat, resolve_base_url
 from app.services.qa_service import (
@@ -1737,7 +1740,7 @@ def test_ask_stream_all_candidates_fail_then_retry(monkeypatch):
             retried.append(vars_)
             if len(retried) == 1:
                 raise RuntimeError('retry hit')  # 触发再次回传
-            return ({'model': 'CommercialLedger', 'mode': 'query', 'condition': {},
+            return ({'model': 'CommercialLedger', 'mode': 'query', 'condition': {'unit': {'$eq': 'a'}},
                      'fields': ['unit', 'income'], 'limit': 10},
                     {'total_tokens': 4, 'elapsed_s': 0.1, 'cache_hit_tokens': 0, 'cache_miss_tokens': 0})
         if scenario == 'conclusion':
@@ -2155,3 +2158,85 @@ def test_crud_aggregate(monkeypatch):
     _crud_w_mock(monkeypatch, [{'unit': 'a'}])
     out = asyncio.run(_crud_mod.aggregate('CommercialLedger', [{'$match': {'unit': 'a'}}]))
     assert out and out[0]['unit'] == 'a'
+
+
+# ---- ASR 协议（豆包 bigmodel_async 二进制帧 + 结果抽取，纯逻辑）----
+
+def _res_frame(payload: dict) -> ParsedFrame:
+    return ParsedFrame(P.MT_FULL_SERVER_RESPONSE, None, json.dumps(payload, ensure_ascii=False).encode())
+
+
+def test_asr_extract_bigmodel_interim():
+    # bigmodel_async result 为对象，utterance 未定稿 → final=False
+    fr = _res_frame({'result': {'text': '你好', 'utterances': [{'text': '你好', 'definite': False}]}})
+    assert P.extract_text(fr) == ('你好', False)
+
+
+def test_asr_extract_bigmodel_final():
+    # 任一 utterance definite=true → final=True（此前该分支被丢弃，识别文本全丢的回归用例）
+    fr = _res_frame({'result': {
+        'text': '你好，这是测试语音。',
+        'utterances': [{'text': '你好，这是测试语音。', 'definite': True}]}})
+    assert P.extract_text(fr) == ('你好，这是测试语音。', True)
+
+
+def test_asr_extract_legacy_list_result_type_full():
+    # 兼容旧 schema：result 为数组 + result_type=full → 拼接文本且为确定句
+    fr = _res_frame({'result': [{'text': '喂'}, {'text': '喂，请讲'}], 'result_type': 'full'})
+    assert P.extract_text(fr) == ('喂喂，请讲', True)
+
+
+def test_asr_extract_empty_result():
+    # 无文本（如仅带 log_id）→ (None, False)，不抛错
+    fr = _res_frame({'result': {'additions': {'log_id': 'x'}}})
+    assert P.extract_text(fr) == (None, False)
+
+
+def test_asr_extract_error_frame():
+    # 错误帧恒返回 (None, False)
+    assert P.extract_text(ParsedFrame(P.MT_ERROR_RESPONSE, None, b'{}')) == (None, False)
+
+
+def test_asr_extract_invalid_json():
+    assert P.extract_text(ParsedFrame(P.MT_FULL_SERVER_RESPONSE, None, b'<not-json>')) == (None, False)
+
+
+def test_asr_frame_roundtrip():
+    # full client request 首帧回环
+    full = P.build_full_request({'user': {'uid': 'u'}, 'audio': {}, 'request': {}})
+    f0 = P.parse_frame(full)
+    assert f0 is not None and f0.message_type == P.MT_FULL_CLIENT_REQUEST
+    # 最后一包音频帧：message_type=2 且 byte1 低 4 位携带 last 标志
+    last = P.build_audio_frame(b'\x00\x01', is_last=True)
+    f1 = P.parse_frame(last)
+    assert f1 is not None and f1.message_type == P.MT_AUDIO_ONLY_REQUEST
+    assert (last[1] & 0x0F) & P._FLAG_LAST_PACKET != 0
+
+
+def test_asr_extract_utterances_join_when_no_top_text():
+    # schema A：顶层无 text 时，用 utterances 拼接（真实兜底分支）
+    fr = _res_frame({'result': {'utterances': [{'text': '今天'}, {'text': '天气不错'}]}})
+    assert P.extract_text(fr) == ('今天天气不错', False)
+
+
+def test_asr_extract_result_neither_dict_nor_list():
+    # result 既非对象也非数组（异常结构）→ (None, False)
+    fr = _res_frame({'result': 42})
+    assert P.extract_text(fr) == (None, False)
+
+
+def test_asr_extract_top_text_fallback():
+    # 顶层 text 兜底：result 非 dict/list，但 obj['text'] 为 str → 取到文本
+    fr = _res_frame({'result': 'bad', 'text': '兜底文本'})
+    assert P.extract_text(fr) == ('兜底文本', False)
+
+
+def test_asr_extract_top_text_fallback_full_final():
+    # 顶层 text 兜底 + result_type=full → 确定为定稿
+    fr = _res_frame({'text': '兜底文本', 'result_type': 'full'})
+    assert P.extract_text(fr) == ('兜底文本', True)
+
+
+def test_asr_parse_too_short():
+    # 数据不足 4 字节 → 返回 None（不抛错）
+    assert P.parse_frame(b'\x00') is None

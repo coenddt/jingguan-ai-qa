@@ -13,6 +13,10 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...devices['Desktop Chrome'],
+    // 提供内置假麦克风并自动授权，headless 下无需真实硬件即可走通 getUserMedia 录音链路
+    launchOptions: {
+      args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+    },
   },
   webServer: {
     command: 'node e2e/serve-static.mjs',

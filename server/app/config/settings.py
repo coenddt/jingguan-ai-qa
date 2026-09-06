@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # 火山 TTS（新版控制台 API Key，仅 Key 参与鉴权；应用名仅控制台标识不入程序）
     VOICE_API_KEY: str = ''
 
+    # 火山豆包语音识别 2.0（新版控制台 API Key，与 TTS 用途分开，仅服务器 .env 配置）
+    ASR_API_KEY: str = ''
+
     LLM_PLATFORM: str = 'deepseek'
     LLM_BASE_URL: str = 'https://api.deepseek.com/v1'
     LLM_API_KEY: str = ''

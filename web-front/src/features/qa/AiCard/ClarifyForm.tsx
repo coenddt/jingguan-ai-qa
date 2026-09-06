@@ -1,6 +1,6 @@
 /** 澄清表单卡：条件不足时提示用户补全单选/多选/输入，提交后拼成完整自然语言问题重问 */
 
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import type { ClarifyForm as ClarifyFormData } from '../../../types'
 import { useAsk } from '../qaContext'
 import { useSnackbar } from '../../../hooks/useSnackbar'
@@ -15,6 +15,9 @@ interface Props {
 export default function ClarifyForm({ form, onCancel }: Props) {
   const ask = useAsk()
   const { showSnackbar } = useSnackbar()
+  /** 实例唯一 id：radio 的 name 必须带上，否则历史表单与当前表单同名 radio 会共享原生互斥组，
+   *  导致点击无反应、选择漂移（用户误选到其他表单的同 key 字段） */
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const [selected, setSelected] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(form.fields.map((f) => [f.key, []])))
   const [inputs, setInputs] = useState<Record<string, string>>({})
@@ -68,6 +71,17 @@ export default function ClarifyForm({ form, onCancel }: Props) {
   }
 
   const submit = () => {
+    // 必填字段校验：required 字段未填时阻止提交（如年份），避免"没收到选择"再被后端重复追问
+    for (const f of form.fields) {
+      if (!f.required) continue
+      const filled = f.type === 'input'
+        ? (inputs[f.key] ?? '').trim() !== ''
+        : (selected[f.key] ?? []).some((v) => v)
+      if (!filled) {
+        showSnackbar(`请先选择${f.label}`, 'warning')
+        return
+      }
+    }
     if (!hasAny()) {
       showSnackbar('请至少补充一项查询条件', 'warning')
       return
@@ -97,7 +111,7 @@ export default function ClarifyForm({ form, onCancel }: Props) {
                   <input
                     type="radio"
                     className="radio radio-primary radio-sm"
-                    name={`cf-${f.key}`}
+                    name={`cf-${uid}-${f.key}`}
                     checked={(selected[f.key] ?? []).includes(String(opt))}
                     onChange={() => pickSingle(f.key, String(opt))}
                   />
@@ -105,24 +119,10 @@ export default function ClarifyForm({ form, onCancel }: Props) {
                 </label>
               ))}
             </div>
-          ) : f.type === 'select' ? (
-            <select
-              multiple
-              size={Math.min((f.options ?? []).length, 6)}
-              className="select select-bordered select-sm w-full max-w-xs"
-              value={selected[f.key] ?? []}
-              onChange={(e) =>
-                setSelected((p) => ({
-                  ...p,
-                  [f.key]: Array.from(e.target.selectedOptions).map((o) => o.value),
-                }))
-              }
-            >
-              {(f.options ?? []).map((opt) => (
-                <option key={String(opt)} value={String(opt)}>{opt}</option>
-              ))}
-            </select>
           ) : (
+            // checkbox 与 select（>12 项多选）统一渲染为可视 checkbox 组：
+            // 原生 select multiple 叠加 daisyUI5 .select（appearance:none + inline-flex）
+            // 会把选项压成一行竖排文字列且选择框不可见；whitespace-nowrap 保证选项名恒横排
             <div className="flex flex-wrap gap-x-4 gap-y-1">
               {(f.options ?? []).map((opt) => (
                 <label key={String(opt)} className="flex items-center gap-1 cursor-pointer">
@@ -132,7 +132,7 @@ export default function ClarifyForm({ form, onCancel }: Props) {
                     checked={(selected[f.key] ?? []).includes(String(opt))}
                     onChange={() => toggleChoice(f.key, String(opt))}
                   />
-                  <span className="text-sm">{opt}</span>
+                  <span className="text-sm whitespace-nowrap">{opt}</span>
                 </label>
               ))}
             </div>

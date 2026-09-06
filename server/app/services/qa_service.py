@@ -11,6 +11,7 @@ import traceback
 from typing import cast
 
 from app.agent.prompts import scenario_params
+from app.agent.prompts.intent_gate import given_dims
 from app.agent.schema_registry import DIM_ENUMS
 from app.agent.step_tracker import StepTracker
 from app.config import (
@@ -237,7 +238,8 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                 # A 门结构化表单：dimensions 白名单过滤；LLM 未给/给非法键 → 通用维全集兜底（仍软门）
                 dims = [d for d in (intent.get('dimensions') or []) if d in DIM_ENUMS]
                 if not dims:
-                    dims = list(DIM_ENUMS)
+                    # 兜底也须排除问题中已明确给出的维度（如"2025年"），防已确认参数被重复追问
+                    dims = [d for d in DIM_ENUMS if d not in given_dims(question)] or list(DIM_ENUMS)
                 form = {'text': intent_q, 'question': question,
                         'fields': build_clarify_fields(dims, None)}
                 resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, form)

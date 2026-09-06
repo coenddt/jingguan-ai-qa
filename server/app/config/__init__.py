@@ -9,6 +9,7 @@
 - cache.py         问法缓存参数（相似度权重/阈值/条数）
 - llm.py           LLM 通用调用参数（超时/默认温度；场景参数见 agent/prompts）
 - voice.py         语音 TTS
+- voice_asr.py     豆包语音识别 2.0（ASR）
 - app_defaults.py  前台应用默认配置（AppConfig）
 """
 
@@ -52,12 +53,24 @@ from .voice import (
     TTS_USER_UID,
     TTS_VOICE_TYPE,
 )
+from .voice_asr import (
+    ASR_AUDIO,
+    ASR_PACKET_SEC,
+    ASR_REQUEST,
+    ASR_RESOURCE_ID,
+    ASR_WS_URL,
+)
 
 __all__ = [
     'ALLOWED_MEASURES',
     'ALLOWED_OPS',
     'APP_CONFIG_DEFAULTS',
     'APP_TITLE',
+    'ASR_AUDIO',
+    'ASR_PACKET_SEC',
+    'ASR_REQUEST',
+    'ASR_RESOURCE_ID',
+    'ASR_WS_URL',
     'CORS_ORIGINS',
     'DENIED_OPS',
     'EXEC_TIMEOUT',

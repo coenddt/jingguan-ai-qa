@@ -114,7 +114,7 @@ export default function Qa() {
                 <Welcome />
               ) : (
                 <div className="px-5 pt-5 pb-2">
-                  <MessageList messages={messages} sending={sending} scrollRef={scrollRef} />
+                  <MessageList key={activeId ?? 'new'} messages={messages} sending={sending} scrollRef={scrollRef} />
                 </div>
               )}
             </div>

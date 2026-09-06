@@ -32,3 +32,14 @@ warn_return_any = false
 [[tool.mypy.overrides]]
 module = ["openpyxl.*"]
 ignore_missing_imports = true
+
+# ruff 基线（与顶部 mypy 务实降准同策略，仅对必需要求多开）
+#   - WebSocket 网络边界（asr_ws / asr_service）：长驻连接必须宽泛捕获异常以保活、
+#     关闭为尽力而为（无需每次记日志），故按文件豁免 BLE001/S110。
+#   - 其余规则严格不放宽；新增代码新增违规即被 ruff 拦截。
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"app/routers/asr_ws.py" = ["BLE001", "S110"]
+"app/services/asr_service.py" = ["BLE001", "S110"]

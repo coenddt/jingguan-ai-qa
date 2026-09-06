@@ -11,8 +11,7 @@ import traceback
 from typing import cast
 
 from app.agent.prompts import scenario_params
-from app.agent.prompts.intent_gate import given_dims
-from app.agent.schema_registry import DIM_ENUMS
+from app.agent.schema_registry import DIM_ENUMS, FIELD_COMMENTS
 from app.agent.step_tracker import StepTracker
 from app.config import (
     MAX_LIMIT,
@@ -40,7 +39,7 @@ from app.services import (
     query_executor,
 )
 from app.services.json_schema_shell import ShellError
-from app.services.query_clarify import build_clarify_fields, completeness_issues
+from app.services.query_clarify import build_query_hint, completeness_issues
 from app.services.query_guard import GuardError, measure_key, verify
 
 
@@ -59,6 +58,39 @@ def _round_rows(rows: list[dict]) -> list[dict]:
     out = []
     for r in rows:
         out.append({k: (round(v, 2) if isinstance(v, float) else v) for k, v in r.items()})
+    return out
+
+
+# 服务端 join 注入字段的中文表头兜底（不入 schema 描述，避免污染 LLM 可查字段白名单）
+_INJECTED_HEADERS = {'commercialGoal': '商业目标(万元)'}
+
+# 聚合键算子 → 中文（measure_key 形如 sum_contractAmt / count_all，见 query_guard.measure_key）
+_OP_HEADERS = {'sum': '合计', 'avg': '均值', 'count': '记录数', 'min': '最小', 'max': '最大'}
+
+
+def _zh_table_headers(model: str, columns: list[str]) -> list[str]:
+    """表头中文化：字段中文注释优先 → join 注入字段兜底 → 聚合键(字段中文+算子) → 原样保底。
+
+    数据表格表头统一走 schema_registry.FIELD_COMMENTS 中文注释（唯一事实源），
+    保证表头与数据口径一致；不命中时保持英文原样，避免表头失真。
+    """
+    comments = FIELD_COMMENTS.get(model, {})
+    out = []
+    for c in columns:
+        zh = comments.get(c)
+        if zh:
+            out.append(zh)
+            continue
+        zh = _INJECTED_HEADERS.get(c)
+        if zh:
+            out.append(zh)
+            continue
+        op, _, field = c.partition('_')
+        fzh = comments.get(field)
+        if op in _OP_HEADERS and (field == 'all' or fzh):
+            out.append(_OP_HEADERS[op] if field == 'all' else f'{fzh}{_OP_HEADERS[op]}')
+            continue
+        out.append(c)
     return out
 
 
@@ -220,33 +252,28 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                     question=question, query_raw=ex['template'])
 
         if rows is None:
-            # —— A：生成前意图门（软门；异常不阻断，直接走 query_gen）——
-            intent_q: str | None = None
+            # —— A：生成前意图门（已降级为软提示，不阻断链路）：判定"缺条件"不再弹表单追问，
+            # 而是落自动反馈留痕 + 把缺省策略作为 hint 注入 query_gen（先查再说，缺省口径兜底）——
+            hint = ''
             try:
                 intent, _ret = await llm_client.invoke('intent_gate', {'question': question}, model_conf)
                 if not isinstance(intent, dict):
                     intent = {}
                 if intent.get('need_more_info'):
-                    intent_q = intent.get('question') or ''
-            except Exception:  # noqa: BLE001  # 意图门软门：异常不阻断，直接走 query_gen
-                intent_q = None
-            if intent_q:
-                if not isinstance(intent, dict):  # mypy 收窄（运行时 intent_q 非空即已归一）
-                    intent = {}
-                tracker.done(1, f'问题条件不足，已追问澄清：{intent_q}')
-                yield _step_ev(tracker, 1)
-                # A 门结构化表单：dimensions 白名单过滤；LLM 未给/给非法键 → 通用维全集兜底（仍软门）
-                dims = [d for d in (intent.get('dimensions') or []) if d in DIM_ENUMS]
-                if not dims:
-                    # 兜底也须排除问题中已明确给出的维度（如"2025年"），防已确认参数被重复追问
-                    dims = [d for d in DIM_ENUMS if d not in given_dims(question)] or list(DIM_ENUMS)
-                form = {'text': intent_q, 'question': question,
-                        'fields': build_clarify_fields(dims, None)}
-                resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, form)
-                await _save_messages(session, question, resp, user_name)
-                saved = True
-                yield {'type': 'done', 'data': resp}
-                return
+                    dims = [d for d in (intent.get('dimensions') or []) if d in DIM_ENUMS]
+                    hint = build_query_hint(dims)
+                    log('info', 'ask_intent_gate', need_more_info=True, dims=dims)
+                    # 门被策略性放行 → 自动反馈（告警优先）：高频出现说明意图门 prompt 或问题本身需回溯
+                    await auto_feedback.record(
+                        category='fallback',
+                        trigger_point='intent_gate_bypass',
+                        reason=f'意图门判定条件不足（dimensions={dims}），按"先查再说"策略放行，以缺省口径兜底',
+                        layer='内层防护罩-意图门(已降级软提示，不拦截)',
+                        upstream='intent_gate 提示词判定保守或问题含糊；query_gen 缺省规则(年份默认2026/全量汇总)兜底',
+                        fix_hint='若该告警高频出现：收紧 intent_gate 提示词或补 few-shot；若问题确属含糊：改在结论/追问层引导',
+                        question=question)
+            except Exception:  # noqa: BLE001  意图门软门：异常不阻断，直接走 query_gen
+                hint = ''
 
             few = await query_cache.top_k_fuzzy(question)
             # 阶段三：热度分级——best fuzzy score 命中阈值 → warm(低开销 1 候选) / cold(候选兜底)
@@ -256,7 +283,8 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
             n_cands = max(int(tier_cfg['candidates'] or QA_QUERY_CANDIDATES), 1)
             conc = max(int(tier_cfg['concurrency'] or QA_QUERY_CANDIDATE_CONCURRENCY), 1)
             candidates, prime_meta = await query_candidate.generate_candidates(
-                question, few, model_conf, n_cands, conc, preheat=bool(QA_PREHEAT_ENABLED))
+                question, few, model_conf, n_cands, conc, preheat=bool(QA_PREHEAT_ENABLED),
+                hint=hint)
             cache_hit = cache_miss = 0
             for _, meta in candidates:
                 if meta.get('ok') and meta.get('tokens'):
@@ -283,6 +311,28 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
 
             # 择优执行：按候选序尝试执行；全部失败 → 串行错误回传修正重试（原行为兜底）
             yield _step_running(2)
+            # —— B：生成后完整度校验（硬门，收紧版）：仅统计/目标表缺年份(口径不明)时拦截追问，
+            # 其余一律放行执行（空结果/全量由结论与追问建议承接，先查再说）——
+            if checked_list:
+                issues = completeness_issues(checked_list[0])
+                if issues is not None:
+                    await auto_feedback.record(
+                        category='guard',
+                        trigger_point='query_clarify_block',
+                        reason=f'统计/目标表查询缺年份，口径不明：{json.dumps(checked_list[0], ensure_ascii=False)}',
+                        layer='内层防护罩-完整度校验',
+                        upstream='query_gen 未按"年份缺省取 2026"缺省规则生成条件',
+                        fix_hint='核查 query_gen 提示词缺省年份规则为何未生效；若高频可把 year 缺省下沉到守卫规范化',
+                        question=question, query_raw=query_raw)
+                    tracker.done(2, f'查询缺少必要条件，已追问澄清：{issues["text"]}')
+                    yield _step_ev(tracker, 2)
+                    _log_step(tracker, 2)
+                    form = {'text': issues['text'], 'question': question, 'fields': issues['fields']}
+                    resp = await _build_clarify_resp(session, tracker, model_conf, t0, tokens, form)
+                    await _save_messages(session, question, resp, user_name)
+                    saved = True
+                    yield {'type': 'done', 'data': resp}
+                    return
             last_err = ''
             for checked in checked_list:
                 try:
@@ -319,6 +369,14 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
                         issues = completeness_issues(checked)
                         if issues is not None:   # —— B：生成后完整度校验（硬门）——
                             issues_text = issues.get('text', '问题条件不足，请补充查询条件')
+                            await auto_feedback.record(
+                                category='guard',
+                                trigger_point='query_clarify_block',
+                                reason=f'重试查询缺年份，口径不明：{json.dumps(checked, ensure_ascii=False)}',
+                                layer='内层防护罩-完整度校验',
+                                upstream='query_gen 重试修正仍未按"年份缺省取 2026"规则生成条件',
+                                fix_hint='核查重试提示词与缺省年份规则；若高频可把 year 缺省下沉到守卫规范化',
+                                question=question, query_raw=query_raw)
                             tracker.done(2, f'查询缺少必要条件，已追问澄清：{issues_text}')
                             yield _step_ev(tracker, 2)
                             form = {'text': issues_text, 'question': question, 'fields': issues['fields']}
@@ -394,8 +452,9 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
             rows, display_fields[0] if display_fields else None)
         chart = _build_chart(question, used_query, rows)
         findings = _build_findings(stats, numeric_field)
-        columns = list(rows[0].keys()) if rows else []
-        rows_2d = [[r.get(c, '') for c in columns] for r in rows]
+        raw_columns = list(rows[0].keys()) if rows else []
+        columns = _zh_table_headers(used_query['model'], raw_columns)
+        rows_2d = [[r.get(c, '') for c in raw_columns] for r in rows]
 
         # 结果块逐块推送（出完一块推一块）
         yield {'type': 'block', 'name': 'findings', 'data': findings}

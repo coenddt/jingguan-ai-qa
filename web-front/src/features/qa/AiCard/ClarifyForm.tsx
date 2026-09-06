@@ -89,6 +89,12 @@ export default function ClarifyForm({ form, onCancel }: Props) {
     ask(buildFullQuestion())
   }
 
+  /** 跳过补充：按缺省口径（2026 年全年）直接重问，不强制填表（先查再说，缺省口径兜底） */
+  const askWithDefault = () => {
+    const q = form.question
+    ask(/20\d{2}/.test(q) ? q : `2026年${q}`)
+  }
+
   return (
     <div className="clarify-form">
       <div className="dot-li mb-2">{form.text}</div>
@@ -139,9 +145,10 @@ export default function ClarifyForm({ form, onCancel }: Props) {
           )}
         </div>
       ))}
-      <div className="flex gap-2 mt-2">
-        <button className="btn btn-sm btn-primary" onClick={submit}>提交</button>
-        {onCancel && <button className="btn btn-sm btn-ghost" onClick={onCancel}>取消</button>}
+      <div className="flex flex-wrap gap-2 mt-2">
+        <button className="btn btn-sm btn-primary whitespace-nowrap" onClick={submit}>提交</button>
+        <button className="btn btn-sm btn-outline whitespace-nowrap" onClick={askWithDefault}>按默认（2026年）直接查</button>
+        {onCancel && <button className="btn btn-sm btn-ghost whitespace-nowrap" onClick={onCancel}>取消</button>}
       </div>
     </div>
   )

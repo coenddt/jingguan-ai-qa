@@ -22,10 +22,11 @@ _PREHEAT_MAX_TOKENS = 8
 
 async def generate_candidates(question: str, few_shots: list, model_conf: dict,
                               n: int, concurrency: int,
-                              preheat: bool = False) -> tuple[list[tuple[dict | None, dict]], dict | None]:
+                              preheat: bool = False, hint: str = '') -> tuple[list[tuple[dict | None, dict]], dict | None]:
     """并行生成 n 个候选查询（原始 query，未校验）。
 
     多样性：候选 0 携带 few_shots，其余不带，避免同 prompt 同质。
+    hint：意图门软提示（可空），注入 query_gen 用户消息尾部指引缺省策略。
     返回 ([(query | None, meta), ...], prime_meta)：
       - 候选 meta = {idx, ok, elapsed_s, tokens|cache_hit|cache_miss|error}
       - prime_meta = 预热请求结果（preheat=False 时为 None；失败置 ok=False，不阻断候选）。
@@ -44,6 +45,8 @@ async def generate_candidates(question: str, few_shots: list, model_conf: dict,
 
     async def _one(i: int):
         variables = {'question': question, 'few_shots': few_shots if i == 0 else []}
+        if hint:
+            variables['hint'] = hint
         async with sem:
             t0 = time.monotonic()
             try:

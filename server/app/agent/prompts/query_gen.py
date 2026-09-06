@@ -3,6 +3,7 @@
 variables 契约：
 - question        必填，用户自然语言问题
 - few_shots       可选，历史成功问法 [{question, template}]（首次生成时注入）
+- hint            可选，意图门软提示（缺失维度按缺省策略兜底的指引，追加在用户消息尾部）
 - bad_query/error 可选，同时提供时进入重试修正形态
 """
 
@@ -56,6 +57,11 @@ def _system_prompt(few_shots: list[dict] | None) -> str:
     return SYSTEM_TMPL.format(models=models, few_shot=few) + '\n输出示例：\n' + '\n'.join(MODEL_JSON_EXAMPLES)
 
 
+def hint_line(hint: str | None) -> str:
+    """意图门软提示渲染为用户消息尾部一行（空 hint 返回空串，保持消息与原形态一致）"""
+    return f'\n（{hint}）' if hint else ''
+
+
 def build(variables: dict) -> list[dict]:
     """渲染该场景的消息列表（纯函数，禁 IO）"""
     question = variables['question']
@@ -70,5 +76,5 @@ def build(variables: dict) -> list[dict]:
         ]
     return [
         {'role': 'system', 'content': _system_prompt(variables.get('few_shots'))},
-        {'role': 'user', 'content': question},
+        {'role': 'user', 'content': f'{question}{hint_line(variables.get("hint"))}'},
     ]

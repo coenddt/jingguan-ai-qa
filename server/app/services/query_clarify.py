@@ -25,20 +25,13 @@ def _model_keys(model: str | None) -> set[str]:
 
 
 def missing_dims(query: dict) -> list[str]:
-    """判缺失字段集；查询条件 topic 键为顶层非 $ 前缀键。条件充足返回空列表。"""
+    """判缺失字段集（收紧版）：仅当统计/目标类模型未显式指定年份（口径不明）时拦截追问；
+    其余一律放行执行（先查再说——空结果/全量汇总由结论层与追问建议承接）。"""
     model = query.get('model')
     cond = query.get('condition') or {}
     topic_keys = {k for k in cond if not k.startswith('$')}
     if model in _REQUIRED_YEAR_MODELS and 'year' not in topic_keys:
         return ['year']
-    if not topic_keys:
-        model_fields = _model_keys(model)
-        keys = [k for k in DIM_ENUMS if k in model_fields]
-        # 自定义自由输入字段（不在 DIM_ENUMS）也视为待补参数
-        for custom in ('customer',):
-            if custom in model_fields:
-                keys.append(custom)
-        return keys
     return []
 
 
@@ -81,6 +74,13 @@ def completeness_issues(query: dict) -> dict | None:
     dims = missing_dims(query)
     if not dims:
         return None
-    text = ('请补充查询年份（可选 2025、2026）' if dims == ['year']
-            else '问题条件不足：请在下方选择或补充查询维度')
+    text = '请补充查询年份（可选 2025、2026）'
     return {'text': text, 'fields': build_clarify_fields(dims, query.get('model'))}
+
+
+def build_query_hint(dims: list[str]) -> str:
+    """意图门软提示：把判定的缺失维度转成 query_gen 的 hint（纯函数，禁 IO）。
+    策略先行不追问：year→缺省 2026，其余维度→全量汇总，直接生成最合理查询。"""
+    labels = '、'.join(DIM_LABELS.get(d, d) for d in dims) or '部分条件'
+    return (f'意图门提示：问题可能未明确{labels}，无需追问用户——'
+            '年份缺省取 2026，未指明维度按全量汇总（不加过滤）处理，直接生成最合理的查询。')

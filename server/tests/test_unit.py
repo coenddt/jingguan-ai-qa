@@ -1688,7 +1688,7 @@ def test_ask_stream_llm_candidate_path(monkeypatch):
     cand = ({'model': 'CommercialLedger', 'mode': 'aggregate', 'condition': {}, 'groupBy': ['unit'],
              'measures': [{'op': 'sum', 'field': 'income'}], 'limit': 10},
             {'idx': 0, 'ok': True, 'tokens': 5, 'cache_hit': 0, 'cache_miss': 0})
-    async def fake_gen(question, few, model_conf, n, conc, preheat=False):
+    async def fake_gen(question, few, model_conf, n, conc, preheat=False, hint=''):
         return ([cand], {'ok': True})
     def fake_pick(cands):
         return ([cand[0]], [{'idx': 0, 'status': 'ok'}])
@@ -1729,7 +1729,7 @@ def test_ask_stream_all_candidates_fail_then_retry(monkeypatch):
         return None
     async def fake_fuzzy(q):
         return []
-    async def fake_gen(question, few, model_conf, n, conc, preheat=False):
+    async def fake_gen(question, few, model_conf, n, conc, preheat=False, hint=''):
         return ([(None, {'idx': 0, 'ok': False, 'error': 'gen boom'})], None)
     def fake_pick(cands):
         return ([], [{'idx': 0, 'status': 'empty'}])

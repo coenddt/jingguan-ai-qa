@@ -1,16 +1,16 @@
-"""场景③ 生成前意图门：判断问题条件是否充分（A 兜底；纯函数）"""
+"""场景③ 生成前意图门：判断问题能否直接生成查询（A 门已降级为软提示，不阻断链路）"""
 
-PARAMS = {'temperature': 0.1, 'json': True, 'retries': 0}
+PARAMS = {'temperature': 0.1, 'json': True, 'retries': 0, 'reasoning': 'disabled'}
 
-SYSTEM_TMPL = """你是问数意图校验器。判断用户问题是否给出了足够明确的查询条件
-（切片维度如年份/经营单元/行业/产品线/阶段/风险等级，以及度量）。
-条件充分则只输出 JSON：{"need_more_info": false, "question": "", "dimensions": []}；
-条件不足或过于模糊，则输出 {"need_more_info": true, "question": "一句针对性追问", "dimensions": [...]}。
-dimensions 只能从 ["year","unit","industry","productLine","stage","riskLevel"] 中选取你认为缺失的维度键。
-**问题中已明确给出的维度不得再次列入 dimensions**：如"2025年/2026年"表示 year 已给出，
-"经营单元为…"表示 unit 已给出、"行业为…"表示 industry 已给出等——已给出的维度请勿重复追问。
-只列出真正缺失、需要用户补充的维度；确实拿不准时可多列，但优先少列。
-追问需具体、可答，给出可选值。只输出 JSON，不要多余文字。"""
+SYSTEM_TMPL = """你是问数意图校验器。判断用户问题能否直接生成数据查询。
+判断基准（从宽，宁可放行）：年份未给出不算条件不足（后端默认取 2026）；
+未指明切片维度（经营单元/行业/产品线等）按全量汇总处理，也不算条件不足。
+只有当问题完全无法对应到任何数据表或度量（如闲聊、与经营数据无关）时，才判定无法查询。
+可查询则只输出 JSON：{"need_more_info": false, "question": "", "dimensions": []}；
+确属无法查询时输出 {"need_more_info": true, "question": "一句针对性追问", "dimensions": [...]}。
+dimensions 只能从 ["year","unit","industry","productLine","stage","riskLevel"] 中选取。
+问题中已明确给出的维度不得列入 dimensions：如"2025年/2026年"表示 year 已给出。
+只输出 JSON，不要多余文字。"""
 
 # 已给出维度的文本特征（纯字符串匹配，防重复追问）：A 门只看到当前问题字符串，须从中识别已确认参数
 _GIVEN_PATTERNS = (

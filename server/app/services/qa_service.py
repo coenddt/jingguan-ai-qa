@@ -68,30 +68,29 @@ _INJECTED_HEADERS = {'commercialGoal': '商业目标(万元)'}
 _OP_HEADERS = {'sum': '合计', 'avg': '均值', 'count': '记录数', 'min': '最小', 'max': '最大'}
 
 
-def _zh_table_headers(model: str, columns: list[str]) -> list[str]:
-    """表头中文化：字段中文注释优先 → join 注入字段兜底 → 聚合键(字段中文+算子) → 原样保底。
+def _zh_name(model: str, name: str) -> str:
+    """字段/聚合键 → 中文名：字段中文注释优先 → join 注入字段兜底 → 聚合键(字段中文+算子) → 原样保底。
 
-    数据表格表头统一走 schema_registry.FIELD_COMMENTS 中文注释（唯一事实源），
-    保证表头与数据口径一致；不命中时保持英文原样，避免表头失真。
+    用户可见名（表头/发现/图表标题图例）统一走 schema_registry.FIELD_COMMENTS 中文注释
+    （唯一事实源），保证与数据口径一致；不命中时保持英文原样，避免名称失真。
     """
     comments = FIELD_COMMENTS.get(model, {})
-    out = []
-    for c in columns:
-        zh = comments.get(c)
-        if zh:
-            out.append(zh)
-            continue
-        zh = _INJECTED_HEADERS.get(c)
-        if zh:
-            out.append(zh)
-            continue
-        op, _, field = c.partition('_')
-        fzh = comments.get(field)
-        if op in _OP_HEADERS and (field == 'all' or fzh):
-            out.append(_OP_HEADERS[op] if field == 'all' else f'{fzh}{_OP_HEADERS[op]}')
-            continue
-        out.append(c)
-    return out
+    zh = comments.get(name)
+    if zh:
+        return zh
+    zh = _INJECTED_HEADERS.get(name)
+    if zh:
+        return zh
+    op, _, field = name.partition('_')
+    fzh = comments.get(field)
+    if op in _OP_HEADERS and (field == 'all' or fzh):
+        return _OP_HEADERS[op] if field == 'all' else f'{fzh}{_OP_HEADERS[op]}'
+    return name
+
+
+def _zh_table_headers(model: str, columns: list[str]) -> list[str]:
+    """表头中文化：逐列走 _zh_name"""
+    return [_zh_name(model, c) for c in columns]
 
 
 def _build_stats(rows: list[dict], numeric_field: str | None) -> dict:
@@ -123,7 +122,6 @@ def _build_chart(question: str, q: dict, rows: list[dict]) -> dict | None:
         mk = measure_key(q['measures'][0])
         x = [str(r.get(dim, '')) for r in rows]
         series = [round(float(r.get(mk) or 0), 2) for r in rows]
-        title = f'{mk}分布'
     else:
         numeric = [f for f in q['fields'] if isinstance(rows[0].get(f), (int, float))]
         if not numeric:
@@ -132,7 +130,6 @@ def _build_chart(question: str, q: dict, rows: list[dict]) -> dict | None:
         mk = numeric[0]
         x = [str(r.get(dim, ''))[:8] if dim else str(i + 1) for i, r in enumerate(rows)]
         series = [round(float(r.get(mk) or 0), 2) for r in rows]
-        title = f'{mk}分布'
     pie_keywords: tuple[str, ...] = cast(tuple[str, ...], QA_CHART['pie_keywords'])
     pie_max_rows = cast(int, QA_CHART['pie_max_rows'])
     amount_markers: tuple[str, ...] = cast(tuple[str, ...], QA_CHART['amount_markers'])
@@ -143,16 +140,19 @@ def _build_chart(question: str, q: dict, rows: list[dict]) -> dict | None:
     else:
         ctype = 'bar'
     unit = QA_CHART['amount_unit'] if any(m in mk for m in amount_markers) else ''
+    mk_zh = _zh_name(q.get('model', ''), mk)
+    title = f"{mk_zh.replace('(万元)', '') if unit else mk_zh}分布"
     return {'type': ctype, 'title': title, 'unit': unit, 'series': series, 'x': x,
-            'legend': [mk] if ctype != 'pie' else x}
+            'legend': [mk_zh] if ctype != 'pie' else x}
 
 
-def _build_findings(stats: dict, numeric_field: str | None) -> list[str]:
+def _build_findings(stats: dict, numeric_field: str | None, model: str = '') -> list[str]:
     if not stats.get('count'):
         return ['未查询到符合条件的数据']
     out = [f"共 {stats['count']} 条记录，均值 {stats['avg']}"]
     if numeric_field:
-        out.append(f"{numeric_field} 最大值 {stats['max']}（{stats['max_of']}），最小值 {stats['min']}（{stats['min_of']}）")
+        out.append(f"{_zh_name(model, numeric_field)} 最大值 {stats['max']}（{stats['max_of']}），"
+                   f"最小值 {stats['min']}（{stats['min_of']}）")
     return out
 
 
@@ -451,7 +451,7 @@ async def ask_stream(question: str, session_id: str | None, source_keys: list[st
         stats = _build_stats(rows, numeric_field) if numeric_field else _build_stats(
             rows, display_fields[0] if display_fields else None)
         chart = _build_chart(question, used_query, rows)
-        findings = _build_findings(stats, numeric_field)
+        findings = _build_findings(stats, numeric_field, used_query['model'])
         raw_columns = list(rows[0].keys()) if rows else []
         columns = _zh_table_headers(used_query['model'], raw_columns)
         rows_2d = [[r.get(c, '') for c in raw_columns] for r in rows]

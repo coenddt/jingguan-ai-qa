@@ -565,11 +565,15 @@ def test_build_chart_empty_rows():
 
 def test_build_chart_aggregate_default_bar():
     from app.services.query_guard import measure_key as _mk
-    q = {'mode': 'aggregate', 'groupBy': ['unit'], 'measures': [{'op': 'sum', 'field': 'income'}]}
+    q = {'model': 'CommercialLedger', 'mode': 'aggregate', 'groupBy': ['unit'],
+         'measures': [{'op': 'sum', 'field': 'income'}]}
     mk = _mk(q['measures'][0])
     rows = [{'unit': 'a', mk: 100}, {'unit': 'b', mk: 200}]
     chart = _build_chart('普通问题', q, rows)
     assert chart['type'] == 'bar' and chart['series'] == [100.0, 200.0]
+    # 标题/图例中文化：字段注释唯一事实源，带单位时标题省略“(万元)”避免与“单位：”重复
+    assert chart['title'] == '收入额合计分布' and chart['unit'] == '万元'
+    assert chart['legend'] == ['收入额(万元)合计']
 
 
 def test_build_chart_aggregate_pie_by_keyword():
@@ -604,6 +608,8 @@ def test_build_findings_normal():
     stats = {'count': 5, 'avg': 1.2, 'max': 3, 'max_of': 'b', 'min': 1, 'min_of': 'a'}
     out = _build_findings(stats, 'income')
     assert '共 5 条' in out[0] and '最大值 3' in out[1]
+    out = _build_findings(stats, 'contractAmt', 'PplLedger')
+    assert out[1].startswith('合同金额(万元) 最大值 3')
 
 
 def test_active_model_ok(monkeypatch):

@@ -6,7 +6,7 @@ from fastapi import APIRouter, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook, load_workbook
 
-from app.db.mongo_store import store
+from mongo_store import store
 from app.errors import BusinessError
 from app.services.pagination import paged_query
 

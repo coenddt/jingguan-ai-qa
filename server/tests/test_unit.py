@@ -16,7 +16,7 @@ from app.services.query_candidate import pick_checked
 from app.services.auto_feedback import record
 from app.services.json_schema_shell import ShellError, attach_schema, validate
 from app.services.query_guard import GuardError, verify
-from app.db.mongo_store import store
+from mongo_store import store
 from app.services import llm_client
 from app.services.asr_protocol import ParsedFrame
 from app.services import asr_protocol as P
@@ -676,7 +676,7 @@ def test_ensure_session_create(monkeypatch):
 
 def _ask_stream_mocks(monkeypatch, question='上月收入多少', rows=None, few=None):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     if rows is None:
         rows = [{'unit': 'a', 'income': 100}]
     q = {'model': 'CommercialLedger', 'mode': 'list', 'condition': {},
@@ -760,7 +760,7 @@ def test_ask_stream_success_warm(monkeypatch):
 
 def test_ask_stream_exact_cache_hit(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     q = {'model': 'CommercialLedger', 'mode': 'list', 'condition': {},
          'fields': ['unit', 'income'], 'sort': {}, 'limit': 50}
     async def fake_hit(question_):
@@ -814,7 +814,7 @@ def test_ask_stream_exact_cache_hit(monkeypatch):
 
 # ---------- mongo_store pipeline 纯函数（无 DB，内联 schema） ----------
 
-from app.db.mongo_store import pipeline as ppl
+from mongo_store import pipeline as ppl
 
 # 构造与 schema.get() 输出同构的内联 schema（fields 为 {type, ...} 字典）
 _PIPE_SRC = {
@@ -1002,7 +1002,7 @@ def test_pipeline_build_pipeline_standard_no_ctx(monkeypatch):
 
 # ---------- mongo_store permission 纯逻辑 ----------
 
-import app.db.mongo_store.permission as perm
+import mongo_store.permission as perm
 
 
 def test_perm_evaluate_no_roles_ctx_none():
@@ -1076,7 +1076,7 @@ def test_perm_filter_writable_data():
 
 # ---------- mongo_store computes 计算列引擎（纯逻辑） ----------
 
-from app.db.mongo_store import computes as comp
+from mongo_store import computes as comp
 
 
 def test_computes_resolve_default():
@@ -1249,7 +1249,7 @@ from app.services import query_executor as qx
 
 
 def _inject(monkeypatch):
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     @contextlib.contextmanager
     def _ctx(*a, **k):
         yield
@@ -1300,7 +1300,7 @@ from app.services import query_cache as qc
 
 def test_cache_exact_hit_miss(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     async def fake_q1(gql, params=None):
         return None
     monkeypatch.setattr(st, 'query_one', fake_q1)
@@ -1309,7 +1309,7 @@ def test_cache_exact_hit_miss(monkeypatch):
 
 def test_cache_exact_hit_hit(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     calls = []
     async def fake_q1(gql, params=None):
         return {'_id': 'e1', 'template': {'model': 'X'}}
@@ -1328,7 +1328,7 @@ def test_cache_exact_hit_hit(monkeypatch):
 
 def test_cache_exact_hit_empty_template_no_default(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     async def fake_q1(gql, params=None):
         return {'_id': 'e1', 'template': None}
     async def fake_upd(*a, **k):
@@ -1340,7 +1340,7 @@ def test_cache_exact_hit_empty_template_no_default(monkeypatch):
 
 def test_cache_exact_hit_empty_question(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     called = []
     async def fake_q1(gql, params=None):
         called.append(True)
@@ -1353,7 +1353,7 @@ def test_cache_exact_hit_empty_question(monkeypatch):
 
 def test_cache_top_k_fuzzy(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     async def fake_q(gql, params=None):
         return [{'question': 'a', 'qnorm': '问题', 'template': {'m': 1}},
                 {'question': 'b', 'qnorm': '完全不同', 'template': {'m': 2}}]
@@ -1365,7 +1365,7 @@ def test_cache_top_k_fuzzy(monkeypatch):
 
 def test_cache_top_k_fuzzy_filter_and_k(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     from app.services import query_cache as _qc
     async def fake_q(gql, params=None):
         # 4 条：精确同词(高分) / 中度相关 / 两条无关低频
@@ -1389,7 +1389,7 @@ def test_cache_top_k_fuzzy_filter_and_k(monkeypatch):
 
 def test_cache_upsert_new(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     inserted = []
     async def fake_q1(gql, params=None):
         return None
@@ -1408,7 +1408,7 @@ def test_cache_upsert_new(monkeypatch):
 
 def test_cache_upsert_existing_update(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     updates = []
     async def fake_q1(gql, params=None):
         return {'_id': 'e1', 'favor': 2, 'hit': 3}
@@ -1427,7 +1427,7 @@ def test_cache_upsert_existing_update(monkeypatch):
 
 def test_cache_upsert_fail_downgrade(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     updates = []
     async def fake_q1(gql, params=None):
         return {'_id': 'e1', 'favor': 5}
@@ -1450,7 +1450,7 @@ def test_cache_upsert_empty_key(monkeypatch):
 
 def test_cache_upsert_success_without_template_noop(monkeypatch):
     import asyncio
-    from app.db.mongo_store import store as st
+    from mongo_store import store as st
     touched = []
     async def fake_q1(gql, params=None):
         touched.append('query')
@@ -1796,7 +1796,7 @@ def test_ask_stream_exception_returns_error_event(monkeypatch):
 
 # ---------- crud.query 分支测试（find 优化 / 两阶段 / 标准批次） ----------
 
-from app.db.mongo_store import crud as _crud_mod
+from mongo_store import crud as _crud_mod
 
 
 class _FakeAggregateResult:
@@ -1891,7 +1891,7 @@ def test_pipeline_ns_lookup_stages_many_no_unwind(monkeypatch):
                   'relations': {'rows': {'type': 'many', 'model': 'Child',
                                         'localField': 'rowIds', 'foreignField': '_id'}}}
     # 注入子 schema 到注册表
-    from app.db.mongo_store import schema as _sc
+    from mongo_store import schema as _sc
     backup = dict(getattr(_sc, '_schemas', {}))
     _sc._schemas['Child'] = {'name': 'Child', 'collection': 'child', 'fields': {'v': {'type': 'float'}},
                              'computes': {}, 'relations': {}}
@@ -2104,7 +2104,7 @@ def test_crud_update_many_raw_and_set(monkeypatch):
 
 def test_crud_remove_archives_when_schema_exists(monkeypatch):
     # 注册 CommercialLedgerDeleted 让归档分支命中；删除原表
-    from app.db.mongo_store import schema as _schema_mod
+    from mongo_store import schema as _schema_mod
     _schema_mod.register({'name': 'CommercialLedgerDeleted',
                           'collection': 'commercial_ledger_deleted',
                           'idPrefix': 'CLD', 'timestamps': True,

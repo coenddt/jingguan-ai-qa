@@ -10,7 +10,7 @@
 
 import json
 
-from app.db.mongo_store import store
+from mongo_store import store
 from app.log import get_request_id, log
 
 

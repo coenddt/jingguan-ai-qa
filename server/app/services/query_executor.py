@@ -3,7 +3,7 @@
 import asyncio
 
 from app.config import EXEC_TIMEOUT
-from app.db.mongo_store import store
+from mongo_store import store
 from app.models.registry import MODEL_TABLE
 from app.services.query_guard import GuardError, measure_key, verify
 

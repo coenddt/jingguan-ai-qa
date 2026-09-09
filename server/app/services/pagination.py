@@ -1,6 +1,6 @@
 """列表分页公共查询：count + 排序分页 + id 映射一次封装（3 处路由同构聚合）"""
 
-from app.db.mongo_store import store
+from mongo_store import store
 
 
 async def paged_query(model: str, cond: dict, page: int, page_size: int,

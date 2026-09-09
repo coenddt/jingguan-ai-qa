@@ -1,6 +1,6 @@
 from typing import Any, cast
 
-from app.db.mongo_store import store
+from mongo_store import store
 from app.models.schema import ALL_SCHEMAS
 
 REGISTERED: list[str] = []

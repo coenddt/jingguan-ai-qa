@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from app.config import APP_CONFIG_DEFAULTS
-from app.db.mongo_store import store
+from mongo_store import store
 
 router = APIRouter(prefix='/api', tags=['config'])
 

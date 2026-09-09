@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.db.mongo_store import store
+from mongo_store import store
 from app.errors import BusinessError
 from app.services import llm_client
 

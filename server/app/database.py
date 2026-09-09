@@ -1,7 +1,7 @@
 from pymongo import AsyncMongoClient
 
 from app.config import cfg
-from app.db.mongo_store import init as store_init
+from mongo_store import init as store_init
 
 _client: AsyncMongoClient | None = None
 _db = None

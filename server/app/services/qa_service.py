@@ -28,7 +28,7 @@ from app.config import (
     QA_TIME_DIMS,
     QA_TITLE_MAX,
 )
-from app.db.mongo_store import store
+from mongo_store import store
 from app.errors import BusinessError
 from app.log import get_request_id, log
 from app.services import (

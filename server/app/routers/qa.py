@@ -16,7 +16,7 @@ from app.config import (
     QA_SOURCES,
     QA_TITLE_MAX,
 )
-from app.db.mongo_store import store
+from mongo_store import store
 from app.errors import BusinessError
 from app.services import qa_service
 from app.services.pagination import paged_query

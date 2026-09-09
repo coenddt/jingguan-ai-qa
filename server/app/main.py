@@ -10,7 +10,7 @@ from app.auth.dependency import require_login
 from app.auth.router import router as auth_router
 from app.config import APP_TITLE, CORS_ORIGINS, validate_security
 from app.database import close, connect
-from app.db.mongo_store import store
+from mongo_store import store
 from app.errors import BusinessError
 from app.log import RequestIdMiddleware, configure_logging
 from app.models.registry import register_all

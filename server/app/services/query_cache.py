@@ -7,7 +7,7 @@
 import re
 
 from app.config import FUZZY_MIN_SCORE, FUZZY_TOP_K, SIM_JACCARD_W, SIM_LEV_W
-from app.db.mongo_store import store
+from mongo_store import store
 from app.models.registry import SCHEMA_VER
 
 

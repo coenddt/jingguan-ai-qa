@@ -3,7 +3,7 @@
 import random
 
 from app.config import APP_CONFIG_DEFAULTS, cfg
-from app.db.mongo_store import store
+from mongo_store import store
 from app.seed.dim_defs import (
     INCOME_SUBS,
     INDUSTRIES,

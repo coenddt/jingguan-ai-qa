@@ -42,7 +42,7 @@ server/app/
 - 单文件超 ~300 行且含多个职责时拆分；拆分按职责命名（`query_guard.py`），禁建 `utils.py`/`common.py` 垃圾抽屉
 - `__init__.py` 只做包标记与导出，禁业务逻辑
 - 没有第二个调用方不抽公共函数；同逻辑三处重复再聚合
-- 底座库 mongo_store 唯一事实源在 `server/app/db/mongo_store`，改造直接改这里；其他项目（如个人绘画集）的底座副本各自维护、互不同步（原 server-py 载体已于 2026-09-04 删除）
+- 底座库 mongo-store-py 已抽为公共 PyPI 包（源码唯一事实源 https://github.com/coenddt/mongo-store-py，本地不保留副本），改造先 clone 源码 → 跑 `tests/` → 发版；各项目统一 pip 依赖该包，禁再复制底座副本
 
 # 禁止事项
 

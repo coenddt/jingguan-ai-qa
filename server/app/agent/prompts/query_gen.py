@@ -18,7 +18,7 @@ from app.agent.schema_registry import describe_models
 PARAMS: dict[str, int | float | str | bool] = {'temperature': 0.1, 'json': True, 'retries': 3, 'few_shot_max': 3,
                                                'reasoning': 'disabled'}
 
-SYSTEM_TMPL = """你是数据查询生成器。根据用户问题，从给定模型清单中选择合适的模型，产出一个结构化查询 JSON（对 mongo-store 模型的查询，非 SQL）。
+SYSTEM_TMPL = """你是数据查询生成器。根据用户问题，从给定模型清单中选择合适的模型，产出一个结构化查询 JSON（对 mongo-store-py 模型的查询，非 SQL）。
 
 可用模型：
 {models}

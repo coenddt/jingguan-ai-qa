@@ -1,11 +1,11 @@
 ---
 name: "mongo-store-py"
-description: "mongo-store（Python 版 MongoDB 数据层公共包，pip 安装）使用规范：GQL 查询、schema 注册、CRUD/mutation、权限上下文。凡涉及 server 的 MongoDB 读写、schema 定义、数据查询/持久化，必须先调用本 skill 按规则使用。"
+description: "mongo-store-py（Python 版 MongoDB 数据层公共包，pip 安装）使用规范：GQL 查询、schema 注册、CRUD/mutation、权限上下文。凡涉及 server 的 MongoDB 读写、schema 定义、数据查询/持久化，必须先调用本 skill 按规则使用。"
 ---
 
 # mongo-store-py — Python 版 MongoDB 数据层使用规范
 
-模块位置：公共 PyPI 包 `mongo-store`（https://pypi.org/project/mongo-store/），源码唯一事实源在 GitHub 仓库 https://github.com/coenddt/mongo-store（本地工作区不再保留源码副本，2026-09-09 已清理；要改包先 `git clone` 到临时工作目录）。包内模块：`src/mongo_store/` 下 `__init__.py` / `schema.py` / `crud.py` / `pipeline.py` / `computes.py` / `permission.py` / `types.py`。改包流程：clone 源码 → 改代码跑 `tests/` 单测 → 升 `pyproject.toml` 版本号 → 用 pypi-publisher skill 的 `release` 命令发版 → 各项目升级依赖。server 已改为 pip 依赖线上包（2026-09-09 抽包并开源 0.1.0）。
+模块位置：公共 PyPI 包 `mongo-store-py`（https://pypi.org/project/mongo-store-py/），源码唯一事实源在 GitHub 仓库 https://github.com/coenddt/mongo-store-py（本地工作区不再保留源码副本，2026-09-09 已清理；要改包先 `git clone` 到临时工作目录）。包内模块：`src/mongo_store/` 下 `__init__.py` / `schema.py` / `crud.py` / `pipeline.py` / `computes.py` / `permission.py` / `types.py`。改包流程：clone 源码 → 改代码跑 `tests/` 单测 → 升 `pyproject.toml` 版本号 → 用 pypi-publisher skill 的 `release` 命令发版 → 各项目升级依赖。server 已改为 pip 依赖线上包（2026-09-09 抽包并开源 0.1.0）。
 
 ```python
 from mongo_store import init, store

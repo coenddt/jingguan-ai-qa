@@ -7,12 +7,12 @@ description: "PyPI 包发布与版本管理 CLI（build/publish/check/bump/relea
 
 ## 核心概念
 
-Python 包（如 `packages/mongo-store-py`）→ 构建 wheel → twine 发布到公共 PyPI。token 存本目录 [.env](.env)（`PYPI_TOKEN`），**严禁写入代码/文档/命令行/提交入库**。
+Python 包（如 `tmp/mongo-store-py`）→ 构建 wheel → twine 发布到公共 PyPI。token 存本目录 [.env](.env)（`PYPI_TOKEN`），**严禁写入代码/文档/命令行/提交入库**。
 
 ## 调用方式（stdin JSON，禁止散参数）
 
 ```powershell
-'{"cmd":"check","package":"mongo-store"}' | python .trae/skills/pypi-publisher/pypi_publisher.py
+'{"cmd":"check","package":"mongo-store-py"}' | python .trae/skills/pypi-publisher/pypi_publisher.py
 ```
 
 含中文/引号的 JSON：先用 `Write` 写到 `tmp/_args.json`（UTF-8），执行后立即 `DeleteFile` 删除（见 cli-args-rules）。
@@ -31,13 +31,13 @@ Python 包（如 `packages/mongo-store-py`）→ 构建 wheel → twine 发布�
 
 ```powershell
 # 0. 源码在 GitHub（本地工作区不留副本）：先 clone 到临时目录再改代码
-git clone https://github.com/coenddt/mongo-store tmp/mongo-store
+git clone https://github.com/coenddt/mongo-store-py tmp/mongo-store-py
 
 # 1. 改完代码、自检通过后，一条龙发新版本（默认 patch）
-'{"cmd":"release","pkg_dir":"tmp/mongo-store","part":"patch"}' | python .trae/skills/pypi-publisher/pypi_publisher.py
+'{"cmd":"release","pkg_dir":"tmp/mongo-store-py","part":"patch"}' | python .trae/skills/pypi-publisher/pypi_publisher.py
 
 # 2. 确认 PyPI 已收录（约 1~2 分钟同步）
-'{"cmd":"check","package":"mongo-store"}' | python .trae/skills/pypi-publisher/pypi_publisher.py
+'{"cmd":"check","package":"mongo-store-py"}' | python .trae/skills/pypi-publisher/pypi_publisher.py
 ```
 
 ## 注意事项

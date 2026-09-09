@@ -2,11 +2,11 @@
 """pypi-publisher — PyPI 包发布与版本管理 CLI
 
 参数一律从 stdin 读单个 JSON 对象：
-  {"cmd": "build",   "pkg_dir": "packages/mongo-store-py"}
-  {"cmd": "publish", "pkg_dir": "packages/mongo-store-py"}
-  {"cmd": "check",   "package": "mongo-store"}
-  {"cmd": "bump",    "pkg_dir": "packages/mongo-store-py", "part": "patch|minor|major"}
-  {"cmd": "release", "pkg_dir": "packages/mongo-store-py", "part": "patch"}   # bump+build+publish 一条龙
+  {"cmd": "build",   "pkg_dir": "tmp/mongo-store-py"}
+  {"cmd": "publish", "pkg_dir": "tmp/mongo-store-py"}
+  {"cmd": "check",   "package": "mongo-store-py"}
+  {"cmd": "bump",    "pkg_dir": "tmp/mongo-store-py", "part": "patch|minor|major"}
+  {"cmd": "release", "pkg_dir": "tmp/mongo-store-py", "part": "patch"}   # bump+build+publish 一条龙
 
 token 从本脚本同目录 .env 的 PYPI_TOKEN 读取，严禁写入代码/文档/命令行。
 """
@@ -36,7 +36,7 @@ def load_token() -> str:
 def read_stdin_json() -> dict:
     raw = sys.stdin.read().strip()
     if not raw:
-        sys.exit('[pypi-publisher] stdin 为空：请传入 JSON 参数，如 {"cmd":"check","package":"mongo-store"}')
+        sys.exit('[pypi-publisher] stdin 为空：请传入 JSON 参数，如 {"cmd":"check","package":"mongo-store-py"}')
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:

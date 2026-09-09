@@ -1,4 +1,4 @@
-"""16 个核心模型的 mongo-store JSON schema（§4.3 契约，唯一事实源），每 schema 一个文件"""
+"""16 个核心模型的 mongo-store-py JSON schema（§4.3 契约，唯一事实源），每 schema 一个文件"""
 
 from app.models.schema.ai_model import AI_MODEL_SCHEMA
 from app.models.schema.app_config import APP_CONFIG_SCHEMA

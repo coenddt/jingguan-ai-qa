@@ -1,0 +1,36 @@
+[submodule ".trae/skills/no-error-masking"]
+	path = .trae/skills/no-error-masking
+	url = https://gitee.com/coenddt/trae-skill-no-error-masking.git
+[submodule ".trae/skills/new-session-handoff"]
+	path = .trae/skills/new-session-handoff
+	url = https://gitee.com/coenddt/trae-skill-new-session-handoff.git
+[submodule ".trae/skills/md-to-pdf"]
+	path = .trae/skills/md-to-pdf
+	url = https://gitee.com/coenddt/trae-skill-md-to-pdf.git
+[submodule ".trae/skills/gitee"]
+	path = .trae/skills/gitee
+	url = https://gitee.com/coenddt/trae-skill-gitee.git
+[submodule ".trae/skills/code-review-evaluation"]
+	path = .trae/skills/code-review-evaluation
+	url = https://gitee.com/coenddt/trae-skill-code-review-evaluation.git
+[submodule ".trae/skills/test-evaluation"]
+	path = .trae/skills/test-evaluation
+	url = https://gitee.com/coenddt/trae-skill-test-evaluation.git
+[submodule ".trae/skills/mermaid-chart-in-doc"]
+	path = .trae/skills/mermaid-chart-in-doc
+	url = https://gitee.com/coenddt/trae-skill-mermaid-chart-in-doc.git
+[submodule ".trae/skills/cli-args-rules"]
+	path = .trae/skills/cli-args-rules
+	url = https://gitee.com/coenddt/trae-skill-cli-args-rules.git
+[submodule ".trae/skills/evidence-and-traceability"]
+	path = .trae/skills/evidence-and-traceability
+	url = https://gitee.com/coenddt/trae-skill-evidence-and-traceability.git
+[submodule ".trae/skills/code-structure-optimizer"]
+	path = .trae/skills/code-structure-optimizer
+	url = https://gitee.com/coenddt/trae-skill-code-structure-optimizer.git
+[submodule ".trae/skills/user-guide-creator"]
+	path = .trae/skills/user-guide-creator
+	url = https://gitee.com/coenddt/trae-skill-user-guide-creator.git
+[submodule ".trae/skills/execution-doc-creator"]
+	path = .trae/skills/execution-doc-creator
+	url = https://gitee.com/coenddt/trae-skill-execution-doc-creator.git

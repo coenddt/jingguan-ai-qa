@@ -34,3 +34,6 @@
 [submodule ".trae/skills/execution-doc-creator"]
 	path = .trae/skills/execution-doc-creator
 	url = https://gitee.com/coenddt/trae-skill-execution-doc-creator.git
+[submodule ".trae/skills/skill-sync"]
+	path = .trae/skills/skill-sync
+	url = https://gitee.com/coenddt/trae-skill-sync.git
